@@ -30,9 +30,10 @@ Sources: `FINAL_PLAN_BT.md` §2–6, 11, 12 and the Phase 1 row; `DESIGN_V2.md`;
 | 10 | Pixi island renderer: tiers, lots, grey shader + hatch, ring, roads, depth sort, camera fit/pan/pinch/tap-zoom, day/dusk/night tint, grain, people sample with jobs, raid playback, seizure lift, tier-up wash | E2E boot with no console errors; draw calls inside budget |
 | 11 | Game loop + DOM UI screens, first-run flow, sound hooks, haptics, settings, dev-only debug panel | E2E real clicks through each screen |
 | 12 | Save/resume (pagehide/visibility + every phase change) | E2E: reload mid-day restores the same state |
-| 13 | E2E arc: empty land → Village, at both phone sizes, with screenshots | Green |
+| 13 | E2E arc: empty land → Village, in landscape at 800×360 and 960×540, with screenshots | Green |
 | 14 | `apk:play` script, docs, README | Script reviewed (box can't build an APK) |
 | 15 | Strict review pass(es): findings and fixes in `docs/PHASE1_REVIEW.md` | Clean |
+| 16 | Owner feedback: landscape, closer camera, building silhouettes, paper-puppet people, rewarded-only ads, perf/stress paused (DECISIONS #14–#19) | E2E green at both landscape sizes; screenshots in `.artifacts/p1-land/` |
 
 ## Challenges to the plan (decisions recorded in `DECISIONS.md`)
 - **"Parity with prototype v2" vs the unsimulated build changes.** `FINAL_PLAN_BT.md` §3 lists Phase 1 tuning items that were never simulated: surprise raid nights, jobs/posts/hunger timers, pity, catch-up, new-shore breather, first-dusk ×0.7, Hesper's trust. Adding them all at once would change balance before we know the port is right. Order: port and prove parity first (gates green on the known rules), then add tuning items one at a time with the gates as the guard. Items not landed in Phase 1 are listed in `DECISIONS.md` and the report, not hidden.
