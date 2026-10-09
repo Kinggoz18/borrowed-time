@@ -179,9 +179,16 @@ export class GameUI {
             { class: "chip charter", "data-hud": "charter", onclick: () => this.openCharter() },
             icon("star"),
             h("span", {}, nx.name),
-            req(g.level, `Lv ${st.L}/${nx.lvl}`),
-            req(g.people, `${st.pop}/${nx.pop}`, "people"),
-            !g.kept ? req(false, "Over limit") : !g.seal ? req(false, "Seal") : null,
+            // only what still blocks the next tier, at most two items; the sheet has the full list
+            ...[
+              !g.level && req(false, `Lv ${st.L}/${nx.lvl}`),
+              !g.people && req(false, `${st.pop}/${nx.pop}`, "people"),
+              !g.kept && req(false, "Over limit"),
+              !g.seal && req(false, "Seal"),
+            ]
+              .filter((x): x is HTMLElement => !!x)
+              .slice(0, 2),
+            g.level && g.people && g.kept && g.seal ? req(true, "Ready") : null,
           )
         : h("div", { class: "chip charter" }, icon("star"), h("span", {}, `${TIERS[st.tier].name}`)),
     );
