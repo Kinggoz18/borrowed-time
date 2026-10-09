@@ -40,8 +40,10 @@ export interface IslandLayout {
   ground: Placed[];
   ring: Placed[];
   things: Placed[];
-  /** world bounds of the land, for the camera */
+  /** world bounds of the land, for the camera clamp */
   bounds: { x: number; y: number; w: number; h: number };
+  /** what the camera fits on screen: the ring and a strip of shore */
+  fitBounds: { x: number; y: number; w: number; h: number };
   /** Hesper's tent, east shore outside the ring */
   tent: { x: number; y: number };
   gate: { x: number; y: number };
@@ -125,7 +127,10 @@ export function layoutIsland(st: IslandState, opts: { dusk?: boolean } = {}): Is
   things.push({ frame: "tent", x: tc.x, y: tc.y, z: depth(r + 2, -r + 1, 10) });
   const top = cellFront(-S, -S), bot = cellFront(S, S), left = cellFront(-S, S), right = cellFront(S, -S);
   const gate = cellFront(r + 1, 0);
+  const F = r + 2;
+  const ft = cellFront(-F, -F), fb = cellFront(F, F), fl = cellFront(-F, F), fr = cellFront(F, -F);
   return {
+    fitBounds: { x: fl.x - TW / 2, y: ft.y - TH - 60, w: fr.x - fl.x + TW, h: fb.y - ft.y + TH + 60 },
     era,
     r,
     ground,

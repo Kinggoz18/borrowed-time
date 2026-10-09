@@ -1,0 +1,45 @@
+/** Tiny DOM helpers and the inline icon set (ink line icons, ART_BIBLE.md §2 weights). */
+type Attrs = Record<string, string | number | boolean | ((e: Event) => void) | undefined>;
+export type Child = Node | string | number | null | undefined | false;
+
+export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs = {}, ...kids: Child[]): HTMLElementTagNameMap[K] {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === undefined || v === false) continue;
+    if (typeof v === "function") el.addEventListener(k.replace(/^on/, ""), v as EventListener);
+    else if (k === "html") el.innerHTML = String(v);
+    else if (v === true) el.setAttribute(k, "");
+    else el.setAttribute(k, String(v));
+  }
+  for (const c of kids) if (c !== null && c !== undefined && c !== false) el.append(typeof c === "number" ? String(c) : c);
+  return el;
+}
+
+const svg = (body: string, vb = "0 0 24 24") =>
+  `<svg class="ico" viewBox="${vb}" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+
+export const ICON = {
+  hours: svg('<path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9s10 4 10 9"/><path d="M9 18h6" stroke-width="3"/>'),
+  owed: svg('<path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9s10 4 10 9"/><path d="M13 7l-2 3 2 2-2 3" stroke-width="1.6"/>'),
+  safe: svg('<circle cx="12" cy="12" r="8"/><path d="M8 12l3 3 5-6"/><path d="M5 6l-2-2M19 6l2-2M12 4V2"/>'),
+  sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+  moon: svg('<path d="M20 14A8 8 0 1 1 10 4a6 6 0 0 0 10 10z"/>'),
+  people: svg('<circle cx="9" cy="7" r="3"/><path d="M3 20c0-4 3-6 6-6s6 2 6 6"/><circle cx="17" cy="8" r="2.5"/><path d="M16 14c3 0 5 2 5 5"/>'),
+  build: svg('<path d="M14 6l4 4-9 9H5v-4z"/><path d="M13 3l8 8"/>'),
+  tent: svg('<path d="M3 20L12 4l9 16z"/><path d="M12 4v16M9 20l3-6 3 6"/>'),
+  fast: svg('<path d="M3 6l8 6-8 6zM12 6l8 6-8 6z"/>'),
+  play: svg('<path d="M7 5l12 7-12 7z"/>'),
+  gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>'),
+  shield: svg('<path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"/>'),
+  star: svg('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>'),
+  close: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
+  check: svg('<path d="M5 12l5 5 9-10"/>'),
+  cross: svg('<path d="M7 7l10 10M17 7L7 17"/>'),
+  seal: svg('<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>'),
+  fire: svg('<path d="M12 3c1 4 6 6 6 11a6 6 0 0 1-12 0c0-3 2-4 2-7 2 1 3 3 3 5 1-2 1-6 1-9z"/>'),
+  boat: svg('<path d="M3 15h18l-3 5H6zM12 15V3l6 9h-6"/>'),
+  back: svg('<path d="M15 5l-7 7 7 7"/>'),
+  sound: svg('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9a4 4 0 0 1 0 6"/>'),
+  bug: svg('<rect x="7" y="7" width="10" height="13" rx="5"/><path d="M12 7V4M3 12h4M17 12h4M4 6l3 3M20 6l-3 3M4 19l3-3M20 19l-3-3"/>'),
+};
+export const icon = (name: keyof typeof ICON): HTMLSpanElement => h("span", { class: "icon", html: ICON[name] });

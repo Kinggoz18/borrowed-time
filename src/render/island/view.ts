@@ -7,7 +7,7 @@ import { Application, Container, Graphics, Sprite, TilingSprite, type FederatedP
 import type { RaidResult } from "../../core/engine";
 import { kij } from "../../core/rules";
 import type { IslandState } from "../../core/state";
-import { buildAtlas } from "../../art/island/atlas";
+import { buildAtlas, type IslandAtlas } from "../../art/island/atlas";
 import type { Job } from "../../art/island/scenery";
 import type { TierConfig } from "../config";
 import { cellAt, cellFront, eraOf, layoutIsland, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
@@ -45,6 +45,8 @@ export class IslandView {
   private select = new Graphics();
   private shadow = new Graphics();
   private tex!: IslandTextures;
+  private atlas!: IslandAtlas;
+  private thumbs = new Map<string, string>();
   private era = "";
   private layout!: IslandLayout;
   private sprites = new Map<string, Sprite>();
@@ -87,7 +89,9 @@ export class IslandView {
     if (era === this.era) return;
     this.tex?.destroy();
     const s = this.cfg.atlas === "low" ? 1 : 2;
-    this.tex = toTextures(buildAtlas(era, s));
+    this.atlas = buildAtlas(era, s);
+    this.thumbs.clear();
+    this.tex = toTextures(this.atlas);
     this.era = era;
     if (!this.grain) {
       this.grain = new TilingSprite({ texture: this.tex.grain, width: this.app.screen.width, height: this.app.screen.height });
@@ -192,7 +196,7 @@ export class IslandView {
 
   // ---------- camera ----------
   fit(reset: boolean): void {
-    const b = this.layout?.bounds;
+    const b = this.layout?.fitBounds;
     if (!b) return;
     const sw = this.app.screen.width, sh = this.app.screen.height;
     if (this.grain) {
@@ -459,6 +463,24 @@ export class IslandView {
     const p = cellFront(i, j);
     const d = this.fx("fx/dust", p.x, p.y - 8);
     this.tween(0.7, (u) => ((d.alpha = 1 - u), d.scale.set(0.6 + u)), () => d.destroy());
+  }
+
+  /** A frame as an image URL for the DOM (build sheet thumbnails). */
+  thumb(frame: string): string {
+    let url = this.thumbs.get(frame);
+    if (url) return url;
+    const f = this.atlas.frames.get(frame);
+    if (!f) return "";
+    const c = document.createElement("canvas");
+    c.width = f.w;
+    c.height = f.h;
+    c.getContext("2d")!.drawImage(this.atlas.pages[f.page], f.x, f.y, f.w, f.h, 0, 0, f.w, f.h);
+    url = c.toDataURL();
+    this.thumbs.set(frame, url);
+    return url;
+  }
+  get currentEra(): string {
+    return this.era;
   }
 
   stats(): { sprites: number; walkers: number; zoom: number; fitZoom: number } {
