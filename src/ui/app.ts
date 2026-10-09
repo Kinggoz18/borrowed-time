@@ -16,7 +16,7 @@ import { FAST, Session } from "../game/session";
 import { saveSettings, type Settings } from "../game/settings";
 import type { KV } from "../platform/storage";
 import type { Cue, Haptics, Sfx } from "../platform/sfx";
-import { BAND_WORD, BLURB, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
+import { BAND_WORD, BLURB, HIDDEN_TITLE, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
 import { h, icon, type Child } from "./dom";
 
 export interface UiDeps {
@@ -538,7 +538,7 @@ export class GameUI {
       const bar = rangeBar(D, lo, hi);
       const p = this.card({
         cls: "dusk",
-        kicker: `${KIND_TITLE[hint.kind]} · ${BAND_WORD[hint.band!]}`,
+        kicker: hint.hidden ? HIDDEN_TITLE : `${KIND_TITLE[hint.kind]} · ${BAND_WORD[hint.band!]}`,
         title: hint.line,
         body: [
           duskMeter(D, lo, hi, bar, E.hasB(st, "observatory")),

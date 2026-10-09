@@ -296,6 +296,8 @@ Lore drives gameplay: every rule needs a story reason. ✔ = has a reason; ✎ =
 | Tier unlocks (Roads, Trade Post, Academy, Hospital, Exchange, Harbour, Observatory) | Each has its beat in `LORE.md` | ✔ |
 | Only quiet nights are announced | The watchtower can vouch for an empty horizon, not for what's beyond it | ✎ (build) |
 | Raid nights give a cryptic kind-and-power hint | Gulls, oars and drums carry before the boats do | ✎ (build) |
+| New Late types per era (ghosts, runners, siege, rams, ironclads, meters) | Each boat is from the age its island went fully grey; stealth boats hide, fast ones step onto lent land, siege wants walls, rams want craft, iron and clerks come from later greys | ✎ (build) |
+| Ghosts hide unless an Observatory or Watchtower n≥3 spots them | Ada can count oars; a timber tower can still see a quiet hull | ✎ (build) |
 | The Long Dusk is always day 6 | The season's end is the one appointment the Late keep | ✎ |
 | Observatory sharpens hints, never forecasts | Ada can count oars, not intentions | ✎ (build, replaces exact forecast) |
 | People produce only in job slots | The dial pays for work, not for presence | ✎ (build) |
