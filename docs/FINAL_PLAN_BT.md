@@ -402,7 +402,7 @@ Once a tier has 500+ seasons of data, **player data overrides the bots** and the
 **Shared `kit/` folder** (built once, used by all three games):
 - Menus and UI kit (buttons, sheets, panels, toasts, safe areas)
 - Versioned save with migrations
-- Ads and consent
+- Rewarded video ads and consent (no interstitials)
 - IAP
 - Test harness (Vitest, Playwright e2e with screenshot overlap checks, a CI runner for bots)
 - Platform layer (audio unlock, haptics, quality tiers)
@@ -555,7 +555,7 @@ This is software-rendered headless Chrome, not a phone GPU, so treat it as a san
 | **1. Core + greybox** | M | TS rules at parity with `prototype.html` v2, with all section 6 sim gates green in CI. The Pixi isometric greybox plays empty land → Village end to end: ring, upgrades, borrow, dusk decisions, seizure. `IslandSnapshot`, `resolveRaid` and the event log are in place, local only. A 60 fps APK on your phone. |
 | **2. Vertical slice** | L | All 4 tiers and their 7 tier systems, with City using 2×2/3×3 footprints, merged blocks, outskirts and zoom. Art direction per section 11: the Colony and Village eras fully, Town and City at greybox+, and the era transformation cinematic. People on screen, the Charter, naming, the crest, notables, Hesper's trust and the chronicle. A tester reaches Village in 10–15 min. Lore beats wired. Pizzazz #1–#3. Offline-hours cap. 5 testers play 20 minutes without help and can say what borrowing costs. Ad clips recorded. |
 | **3. Ad creative test** | S | Results in hand and a go / no-go on the hook. Budget only with your approval. |
-| **4. Android soft launch** | M | Telemetry (section 3), ads, IAP and consent live. Bands re-checked against player data. Crash-free sessions tracked. Day-1 and Day-7 retention measured, with targets set from the data. |
+| **4. Android soft launch** | M | Telemetry (section 3), rewarded video ads, IAP and consent live. Bands re-checked against player data. Crash-free sessions tracked. Day-1 and Day-7 retention measured, with targets set from the data. |
 | **5. iOS** | M | Passes App Store review (4.2, ATT, IAP). Parity with Android. |
 | Later | – | Multiplayer roadmap (section 12), only if retention justifies it. The data is ready from Phase 1. |
 
@@ -563,12 +563,11 @@ This is software-rendered headless Chrome, not a phone GPU, so treat it as a san
 - **Never sell Hours, loans or debt forgiveness.** Time is the core decision. Paying out of debt would delete the game.
 - **No real-time build timers and no energy**, so there's nothing to skip.
 - **Cosmetics:** island themes, building skin sets per stage, palisade styles, Hesper tent and lantern sets, an optional cosmetic season pass.
-- **Rewarded ads, opt-in only:**
+- **Rewarded video is the only ad format.** Opt-in only, for:
   - an extra bottle message or lore page
   - a cosmetic
   - doubling the capped offline bonus once a day (small, and never offered during a dusk decision or at a seizure)
-- **Interstitials:** only between seasons, rarely, none in the first seasons.
-- **Remove ads** as a one-time purchase.
+- **No interstitial ads, ever** (owner, Oct 9 2026). Nothing plays unless the player taps to watch, so there is no "remove ads" purchase.
 - **No traps:** every season is beatable without paying, no loot boxes, clear prices, and no pressure prompts at moments of loss.
 
 ## 9. Risks

@@ -17,3 +17,4 @@ Design ambiguities resolved during the build, with the option the plan or lore s
 | 11 | 2026-10-09 | Raid nights hint "skiffs" or "longboats" by a fixed pattern of season and day; the rules have one raid kind. | The hint table has two kinds; the sim does not. Presentation only, no RNG draw (tested). |
 | 12 | 2026-10-09 | Dev-build debug grants change the island outside the command log, so they start a new replay checkpoint. | Keeps `verify()` true; the debug panel is absent from production builds. |
 | 13 | 2026-10-09 | The charter sheet shows food and homes, because people who can't be fed or housed leave at dawn before the tier check. | Found in e2e: "45/36 people" looked met but the tier never came. Clarity over surprise. |
+| 14 | 2026-10-09 | Rewarded video is the only ad format. No interstitials, so no "remove ads" purchase. | Owner. Phase 1 has no ad code; the plan's monetization section says rewarded-only. |
