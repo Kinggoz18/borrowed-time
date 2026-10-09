@@ -20,7 +20,7 @@
 - **Lore drives gameplay.** Every rule needs a story reason, or it goes. The audit is in `DESIGN_V2.md` ("Lore reasons for every rule"); rules without a reason are removed or replaced there.
 - **The guard rail:** borrowing must stay the core decision at every tier. It's enforced as CI sim gates (section 6), not good intentions. This is what stops it turning into a Clash clone (section 9).
 - **Build:** the same web stack as One Spark and Loom Rush (TypeScript + Vite + PixiJS v8 + Capacitor), Android first, then iOS. It uses the shared `kit/` folder.
-- **The stack has to earn it first: a hard performance gate (Phase 0, section 5).** Before any real game code, a City-tier stress scene must hold up on a cheap/mid Android phone. **If it fails, Borrowed Time switches to Unity before game code is written.**
+- **The stack has to earn it first: a hard performance gate (Phase 0, section 5).** Before any real game code, a City-tier stress scene must hold up on a cheap/mid Android phone. **Fail = report to the owner with the numbers and options; the owner decides.** No game code is written before that decision.
 - **Pizzazz first:** the vertical slice ships the top 3 ad moments (section 4). We test real clips before full production.
 - **Every number in this plan is a starting target** taken from the prototype and its bot sim. Player data replaces it once we have it.
 
@@ -417,7 +417,7 @@ Game-specific: the island renderer, the economy rules, the sim bots.
 
 None of these are in the plan. The 2.5D isometric look, a few dozen units and sprite-based effects fit Pixi, and staying on the shared web stack keeps the kit, the web demo and one toolchain. If a later phase needs any of the above, re-evaluate then. Don't port mid-production.
 
-**Hard performance gate (Phase 0, before real feature work). Fail means Unity.**
+**Hard performance gate (Phase 0, before real feature work). Fail = report to the owner with the numbers and options; the owner decides.**
 
 Borrowed Time is the heaviest of the three games: a dense isometric city, a raid, particles and full-screen day/night lighting at once. Web-on-Android has to prove it can carry that before we commit.
 
@@ -456,7 +456,7 @@ Borrowed Time is the heaviest of the three games: a dense isometric city, a raid
   The low tier drops bloom and loads half-resolution atlases (exported separately with heavier lines, `ART_BIBLE.md` §2). Normal maps never ship on the low tier.
 - **Re-run the gate whenever the art direction changes:** a new style, extra layers, new lighting or post effects, bigger atlases, or higher particle counts. A failing re-run blocks that art change until it passes, or until we cut weight.
 - **Evidence:** an on-screen fps/frame-time overlay, a CSV log of frame times per second, the startup time, a 10-minute run per device, and a short screen recording.
-- **Fail = switch Borrowed Time to Unity (2.5D isometric, URP) before writing game code.** The pure TS rules and sim gates are cheap to re-express in C#. The shared `kit/` stays with the web games. We don't patch around a failed gate with more caching.
+- **Fail = report to the owner with the numbers and options; the owner decides.** Options to put next to the numbers include cutting weight (fewer figures, lower tier defaults, KTX2 atlases), changing the art plan, or another engine such as Unity (2.5D isometric, URP), where the pure TS rules and sim gates are cheap to re-express in C#. Nobody switches engine or writes a switch plan without the owner's decision. We don't patch around a failed gate with more caching.
 
 **Performance notes from the prototype.** Headless Chrome, full-density City (21×21, every building at levels 10–20, 1,600 people, max ring and roads):
 
@@ -551,7 +551,7 @@ This is software-rendered headless Chrome, not a phone GPU, so treat it as a san
 ## 7. Phases and gates
 | Phase | Size | Done when (evidence) |
 |---|---|---|
-| **0. Performance gate** | S | The section 5 stress scene, with **final-weight art** (finished sample or stand-ins at final resolution, layers, baked light, bloom and particles; normal-mapped lighting only as the optional high-tier pass), runs as an APK on a 3–4 GB, Mali-G52/Adreno-610-class phone and on your phone. It passes all four checks (60 fps typical, ≥ 30 fps steady at worst load, startup under about 3 s, no throttling over 10 min), and stays within the texture memory budget. Frame-time CSVs and a recording are in hand. **No game code until this passes. Fail = switch to Unity.** Re-run it whenever the art direction changes. |
+| **0. Performance gate** | S | The section 5 stress scene, with **final-weight art** (finished sample or stand-ins at final resolution, layers, baked light, bloom and particles; normal-mapped lighting only as the optional high-tier pass), runs as an APK on a 3–4 GB, Mali-G52/Adreno-610-class phone and on your phone. It passes all four checks (60 fps typical, ≥ 30 fps steady at worst load, startup under about 3 s, no throttling over 10 min), and stays within the texture memory budget. Frame-time CSVs and a recording are in hand. **No game code until this passes. Fail = report to the owner with the numbers and options; the owner decides.** Re-run it whenever the art direction changes. |
 | **1. Core + greybox** | M | TS rules at parity with `prototype.html` v2, with all section 6 sim gates green in CI. The Pixi isometric greybox plays empty land → Village end to end: ring, upgrades, borrow, dusk decisions, seizure. `IslandSnapshot`, `resolveRaid` and the event log are in place, local only. A 60 fps APK on your phone. |
 | **2. Vertical slice** | L | All 4 tiers and their 7 tier systems, with City using 2×2/3×3 footprints, merged blocks, outskirts and zoom. Art direction per section 11: the Colony and Village eras fully, Town and City at greybox+, and the era transformation cinematic. People on screen, the Charter, naming, the crest, notables, Hesper's trust and the chronicle. A tester reaches Village in 10–15 min. Lore beats wired. Pizzazz #1–#3. Offline-hours cap. 5 testers play 20 minutes without help and can say what borrowing costs. Ad clips recorded. |
 | **3. Ad creative test** | S | Results in hand and a go / no-go on the hook. Budget only with your approval. |
@@ -587,7 +587,7 @@ This is software-rendered headless Chrome, not a phone GPU, so treat it as a san
 | Easier growth lets over-borrowers grow | You can't grow while over your limit, and a lore-backed stop (grey homes house half) must make borrowMax fail the people gate. The sim gates plus the pacing gate must stay green before it ships. |
 | Rules without a story | Every new rule gets a row in the lore audit (`DESIGN_V2.md`) before it's built. No reason, no rule. |
 | Personal features dilute the borrowing focus | Every personal hook touches time or debt (Hesper's trust, the captains, the chronicle of loans and dusks). Copy stays one line per beat. |
-| Web performance on cheap Android | **Phase 0 hard gate: fail = Unity before any game code.** Then today's caching rules, budgets and quality tiers from day one, re-running the stress scene every phase. |
+| Web performance on cheap Android | **Phase 0 hard gate: fail = report to the owner with the numbers and options; the owner decides, before any game code.** Then today's caching rules, budgets and quality tiers from day one, re-running the stress scene every phase. |
 
 ## 10. Cursor starter prompt (Phase 1)
 ```
@@ -612,8 +612,8 @@ Order, in small verified chunks (tests first for each):
    final particle counts. On-screen fps overlay, per-second frame-time CSV, GPU memory readout.
    Build the APK and stop. I test it on a 3-4 GB RAM phone (older Mali-G52/Adreno-610
    class) and on my phone. Pass = 60 fps typical, never below a steady 30 fps at worst
-   load, startup under ~3 s, no thermal throttling over 10 minutes, texture memory in budget. If it fails, we switch
-   to Unity: write no game code before I confirm it passed.
+   load, startup under ~3 s, no thermal throttling over 10 minutes, texture memory in budget. If it fails, report to me with the numbers
+   and options; I decide. Write no game code before I confirm it passed.
 1. Repo setup with lint, Vitest, Playwright and a CI script.
 2. Pure TS rules, no rendering: costMul/cost/limit curves, borrowing (daylight today+,
    tomorrow-), grey lots front-first with half output, interest + Hourglass, default seizure
