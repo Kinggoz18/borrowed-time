@@ -15,12 +15,15 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "ci": "bash scripts/ci.sh",
-    "standins": "node scripts/make-standins.mjs"
+    "standins": "node scripts/make-standins.mjs",
+    "sim": "node scripts/sim.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
     "@capacitor/core": "^8.5.3",
     "@capacitor/filesystem": "^8.1.4",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/preferences": "^8.0.1",
     "@capacitor/share": "^8.0.3",
     "@capacitor/splash-screen": "^8.0.2",
     "pixi-filters": "^6.1.5",
