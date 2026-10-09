@@ -297,9 +297,9 @@ describe("tier systems", () => {
     expect(E.duskMul(st)).toBe(1.3);
     E.build(st, lot(st), "harbour");
     expect(E.duskMul(st)).toBe(1.5);
-    expect(E.bossDebtK(st)).toBe(0.55);
+    expect(E.bossDebtK(st)).toBe(1); // 0.8 x the Village multiplier 1.25
     E.build(st, lot(st), "observatory");
-    expect(E.bossDebtK(st)).toBeLessThan(0.55);
+    expect(E.bossDebtK(st)).toBeLessThan(1);
   });
   it("hospital: one hit fewer and saves people", () => {
     const st = village();

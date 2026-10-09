@@ -179,8 +179,10 @@ export function netWorth(st: IslandState): number {
 // ---------- raids ----------
 export const wealth = (st: IslandState): number =>
   st.hours + st.caravan + (st.pal ? st.pal.inv : 0) + (st.road ? st.road.inv : 0) + blds(st).reduce((a, [, b]) => a + b.inv, 0);
-export const bossDebtK = (st: IslandState): number =>
-  hasB(st, "observatory") ? 0.55 * (0.6 - 0.01 * lvOf(st, "observatory")) : 0.55;
+export const bossDebtK = (st: IslandState): number => {
+  const k = BUILD.bossDebtTier[st.tier] === 1 ? BUILD.bossDebt : BUILD.bossDebt * BUILD.bossDebtTier[st.tier];
+  return hasB(st, "observatory") ? k * (0.6 - 0.01 * lvOf(st, "observatory")) : k;
+};
 function nominalRaw(st: IslandState, day: number): number {
   const kind = DAY_KIND[day];
   if (!kind) return 0;

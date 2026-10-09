@@ -23,10 +23,10 @@ export interface TierDef {
 }
 /** lvl/pop = what it takes to reach the tier; cap = building level cap; lim/threat = loan and raid scale. */
 export const TIERS: readonly TierDef[] = [
-  { name: "Colony", lvl: 1, pop: 0, grid: 7, cap: 5, popCap: 41, lim: 1.2, threat: 1 },
+  { name: "Colony", lvl: 1, pop: 0, grid: 7, cap: 5, popCap: 41, lim: 1.2, threat: 1.06 },
   { name: "Village", lvl: 3, pop: 36, grid: 11, cap: 11, popCap: 160, lim: 1.25, threat: 0.95 },
   { name: "Town", lvl: 7, pop: 120, grid: 15, cap: 17, popCap: 500, lim: 2, threat: 1.08 },
-  { name: "City", lvl: 11, pop: 380, grid: 21, cap: 20, popCap: 1600, lim: 2.8, threat: 1.12 },
+  { name: "City", lvl: 11, pop: 380, grid: 21, cap: 20, popCap: 1600, lim: 2.8, threat: 1.2 },
 ];
 
 export const PEOPLE_INC = 1.5;
@@ -35,18 +35,44 @@ export const BASE_FOOD = 8;
 export const BASE_HOUSE = 6;
 
 /** Build-rule constants (sim-test.js defaults). */
-export const BUILD = {
+export const BUILD: {
+  lienDays: number; rebuild: number; upgradeXpPerStage: number; salvage: number; keep: readonly [number, number];
+  boatTop: number; dialTop: number; dialBase: number; dialGrowth: number; flee: number; bossDebt: number; bossDebtTier: number[];
+} = {
   lienDays: 12,
   rebuild: 0.5,
   upgradeXpPerStage: 1,
   salvage: 0.3,
-  keep: [0.25, 0.2] as const,
+  keep: [0.25, 0.2],
   boatTop: 0.08,
   dialTop: 0.25,
   dialBase: 20,
   dialGrowth: 0.03,
   flee: 0,
-} as const;
+  /** How much the Long Dusk feeds on what's owed (per Hour of debt, level-adjusted). */
+  bossDebt: 0.8,
+  /** Per-tier multiplier on bossDebt: a bigger ledger casts a longer shadow. */
+  bossDebtTier: [1, 1.25, 1.75, 1.25],
+};
+
+/**
+ * Phase 1 balance pass (DECISIONS.md #6): the shipped values above differ from the prototype +
+ * sim-test RULES=build baseline only in these knobs. `useRuleset("prototype")` restores the
+ * baseline so the parity test can compare against the vendored reference bit for bit.
+ */
+export type RulesetName = "phase1" | "prototype";
+const RULESETS: Record<RulesetName, { threat: number[]; bossDebt: number; bossDebtTier: number[] }> = {
+  phase1: { threat: [1.06, 0.95, 1.08, 1.2], bossDebt: 0.8, bossDebtTier: [1, 1.25, 1.75, 1.25] },
+  prototype: { threat: [1, 0.95, 1.08, 1.12], bossDebt: 0.55, bossDebtTier: [1, 1, 1, 1] },
+};
+export let RULESET: RulesetName = "phase1";
+export function useRuleset(name: RulesetName): void {
+  const r = RULESETS[name];
+  r.threat.forEach((t, i) => ((TIERS[i] as TierDef).threat = t));
+  BUILD.bossDebt = r.bossDebt;
+  BUILD.bossDebtTier = [...r.bossDebtTier];
+  RULESET = name;
+}
 
 /** Cost multiplier: a Hill curve plus a slow linear tail. */
 export const costMul = (L: number): number => 1 + (2.4 * L * L) / (L * L + 64) + 0.05 * L;

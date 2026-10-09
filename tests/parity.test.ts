@@ -1,7 +1,8 @@
 import { createRequire } from "node:module";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { campaign, STRATEGY_NAMES } from "../src/core/bots";
+import { useRuleset } from "../src/core/rules";
 
 // sim-test.cjs reads these at load time.
 process.env.CORE = path.resolve(__dirname, "reference/prototype-core.js");
@@ -16,7 +17,11 @@ interface RefCampaign {
   tierDay: Record<string, number>;
 }
 
+// Parity is proven against the baseline knobs; the Phase 1 balance pass (DECISIONS.md #6) changes
+// only the knobs useRuleset() swaps, and the gates test runs on the shipped values.
 describe("parity with the prototype rules (sim-test.js, RULES=build)", () => {
+  beforeAll(() => useRuleset("prototype"));
+  afterAll(() => useRuleset("phase1"));
   for (const name of STRATEGY_NAMES)
     for (const seed of [1, 19])
       it(`${name} seed ${seed}: 20 seasons match day by day`, () => {

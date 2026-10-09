@@ -7,7 +7,7 @@ import * as E from "./engine";
 import type { IslandState } from "./state";
 
 export const SNAPSHOT_VERSION = 1;
-export const RULES_VERSION = "v2-build.1";
+export const RULES_VERSION = "v2-build.2";
 
 export interface IslandSnapshot {
   v: typeof SNAPSHOT_VERSION;
