@@ -30,7 +30,7 @@ export class Session {
   ) {}
 
   static fresh(seed: number, kv: KV, colonyName: string, now?: () => number): Session {
-    return new Session(newData(seed), { introDone: false, colonyName, savedAt: 0 }, kv, now);
+    return new Session(newData(seed), { introDone: false, storyDone: false, colonyName, savedAt: 0 }, kv, now);
   }
   static async load(kv: KV, now?: () => number): Promise<Session | null> {
     const f = decodeSave(await kv.get(SAVE_KEY));

@@ -12,6 +12,7 @@ import { IslandView } from "../render/island/view";
 import { GameUI } from "../ui/app";
 import "../ui/ui.css";
 import { Session } from "./session";
+import { applyOrientation, orientFromSettings } from "../platform/orientation";
 import { loadSettings } from "./settings";
 
 export interface GameHooks {
@@ -34,6 +35,7 @@ export async function bootGame(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const kv = await createStorage();
   const settings = await loadSettings(kv);
+  void applyOrientation(orientFromSettings(settings));
   const asked = params.get("tier") ?? (settings.quality !== "auto" ? settings.quality : null);
   const tier: Tier = asked === "low" || asked === "mid" || asked === "high" ? asked : detectTier(probeDevice()).tier;
   const cfg = TIERS[tier];
