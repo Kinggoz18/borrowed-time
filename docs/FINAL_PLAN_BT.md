@@ -395,7 +395,7 @@ Once a tier has 500+ seasons of data, **player data overrides the bots** and the
 |---|---|---|
 | Language/build | TypeScript + Vite | Same as One Spark and Loom Rush. |
 | Engine | **PixiJS v8** | Isometric 2.5D sprites, depth sorting, filters (grey/colour-flood shader), ParticleContainer, WebGL/WebGPU. The rules are already pure functions. |
-| Tweens/audio | GSAP, Howler.js | Proven and small. The synthesized SFX stay as placeholders. |
+| Tweens/audio | CSS/Pixi tweens; Web Audio graph | No Howler. Score and SFX are synthesised on separate buses into a compressor/limiter (DECISIONS #22). |
 | Native wrap | Capacitor 8 (move to 9 once stable, as for One Spark) | One codebase for web, Android and iOS. |
 | Plugins | haptics, AdMob (with consent), RevenueCat, preferences, splash, status bar | Same set as the other two games. |
 | Web | Free demo and ad landing page | Same build. |
@@ -669,6 +669,8 @@ The City era drifts towards Aster's look on purpose: we may be building what we 
 | Village | **Hearth & Harvest** (early medieval, farming) | Wheat gold, moss green, ochre, hearth-smoke white | Thatch, wattle and daub, fieldstone, carved oak | Steep thatched roofs, round stone towers, a mill, a long hall | Hurdy-gurdy, drone, frame drum; a bell for dusk | Carved oak, illuminated initials, wax-seal buttons |
 | Town | **Gears & Gilt** (Renaissance clockwork) | Terracotta, ultramarine, gold leaf, plaster white | Brick, terracotta tile, marble, brass gears | Domes, arcades, clock-tower campaniles, gear motifs on façades | Lute, harpsichord, a ticking pulse, chime stingers | Parchment in brass astrolabe rings, gilt corners |
 | City | **Brass & Steam: the Meridian age** | Brass, verdigris, smoke blue; gaslight amber at night | Iron, glass, riveted brass, sooted brick | Chimneys, glass domes, the observatory, trams on the hour-line avenues, clock-faced towers, steam ferries | A small orchestra with an orchestrion; steam hiss, tram bells | Brass bezel around a glass dial face, enamel labels |
+
+**Score (Phase 2).** There is no licensed music. The game synthesises a looping Web Audio score, always on (including menus), on its own bus, clearly apart from effects: Colony day is Tobias on fiddle and tin whistle over surf (a little sharp and late); dusk is bell and drone; a raid is a low drone and drums; Hesper's tent is a music-box tick; a tier-up plays a short bell stinger. Each era swaps the day palette (Village hurdy-gurdy and drone, Town lute / harpsichord / tick, City brass and hiss). Music ducks under cards and raids. Effects have a separate mute and slider. Both buses go through a compressor then a limiter. Voices cap at 8 with pitch/volume jitter. The graph suspends when the app is in the background.
 
 **Look progression inside an era.** Looks 1–2 are the humble arrival of the era. Looks 3–5 are the era settling in. Looks 6–7 are its height: a signature landmark per type (the Colony's best is a beached hull hall; the City's best are the glass domes). Level caps decide which looks each era needs: Colony 1–2, Village 1–4, Town 1–6, City 1–7.
 

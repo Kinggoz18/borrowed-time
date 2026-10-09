@@ -163,6 +163,7 @@ button { font: inherit; color: inherit; }
 .setting input[type="checkbox"]:checked { background: var(--gold); }
 .setting input[type="checkbox"]:checked::after { left: 27px; }
 .setting select { min-height: 48px; font: inherit; border: 2.5px solid var(--ink); border-radius: 10px; background: var(--paper); padding: 0 10px; color: var(--ink); }
+.setting.vol input[type="range"] { width: 148px; height: 32px; accent-color: var(--gold); cursor: pointer; }
 .settings .note { color: var(--ink-dim); text-shadow: none; }
 #boot { position: fixed; inset: 0; display: grid; place-items: center; color: var(--paper); font-family: var(--serif); font-size: 22px; }
 
