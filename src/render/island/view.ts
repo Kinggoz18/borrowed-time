@@ -10,7 +10,7 @@ import type { IslandState } from "../../core/state";
 import { buildAtlas, type IslandAtlas } from "../../art/island/atlas";
 import type { Job } from "../../art/island/scenery";
 import type { TierConfig } from "../config";
-import { cellAt, cellFront, eraOf, layoutIsland, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
+import { cellAt, cellFront, eraOf, layoutIsland, lotCornerKeys, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
 import { toTextures, type IslandTextures } from "./textures";
 
 interface Walker {
@@ -342,17 +342,35 @@ export class IslandView {
     this.apply();
   }
   highlight(key: string | null): void {
-    this.select.clear();
-    if (!key || !(key in (this.lastLots ?? {}))) return;
-    const [i, j] = kij(key);
-    const f = cellFront(i, j);
-    this.select
-      .poly([f.x, f.y - TH, f.x + TW / 2, f.y - TH / 2, f.x, f.y, f.x - TW / 2, f.y - TH / 2])
-      .stroke({ width: 3, color: 0xd9a441, alpha: 1 });
+    this.selectedKey = key;
+    this.paintSelect();
   }
+  /** Corner ticks on empty lots while the Build sheet is open (UI may call this). */
+  setBuildOpen(open: boolean): void {
+    this.buildOpen = open;
+    this.paintSelect();
+  }
+  private selectedKey: string | null = null;
+  private buildOpen = false;
   private lastLots: Record<string, unknown> | null = null;
   setLots(st: IslandState): void {
     this.lastLots = st.lots;
+    this.paintSelect();
+  }
+  private paintSelect(): void {
+    this.select.clear();
+    const lots = this.lastLots;
+    const key = this.selectedKey;
+    if (!lots) return;
+    for (const k of lotCornerKeys(lots, key, this.buildOpen)) {
+      const [i, j] = kij(k);
+      paintLotCorners(this.select, cellFront(i, j), k === key);
+    }
+    if (key && key in lots) {
+      const [i, j] = kij(key);
+      const f = cellFront(i, j);
+      this.select.poly([f.x, f.y - TH, f.x + TW / 2, f.y - TH / 2, f.x, f.y, f.x - TW / 2, f.y - TH / 2]).stroke({ width: 3, color: 0xd9a441, alpha: 1 });
+    }
   }
 
   // ---------- animation ----------
@@ -545,4 +563,24 @@ const ease = (u: number): number => 1 - (1 - u) * (1 - u);
 function mix(a: number, b: number, u: number): number {
   const ch = (s: number) => Math.round(((a >> s) & 255) + (((b >> s) & 255) - ((a >> s) & 255)) * u);
   return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+function toward(from: { x: number; y: number }, to: { x: number; y: number }, d: number): { x: number; y: number } {
+  const dx = to.x - from.x, dy = to.y - from.y, m = Math.hypot(dx, dy) || 1;
+  return { x: from.x + (dx / m) * d, y: from.y + (dy / m) * d };
+}
+function paintLotCorners(g: Graphics, f: { x: number; y: number }, selected: boolean): void {
+  const diamond = [
+    { x: f.x, y: f.y - TH },
+    { x: f.x + TW / 2, y: f.y - TH / 2 },
+    { x: f.x, y: f.y },
+    { x: f.x - TW / 2, y: f.y - TH / 2 },
+  ];
+  const len = 6;
+  for (let i = 0; i < 4; i++) {
+    const c = diamond[i];
+    const a = toward(c, diamond[(i + 3) % 4], len);
+    const b = toward(c, diamond[(i + 1) % 4], len);
+    g.moveTo(a.x, a.y).lineTo(c.x, c.y).lineTo(b.x, b.y);
+  }
+  g.stroke({ width: selected ? 2 : 1.4, color: selected ? 0xd9a441 : 0x3d3428, alpha: selected ? 0.95 : 0.55, cap: "round", join: "round" });
 }

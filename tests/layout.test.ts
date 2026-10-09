@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as E from "../src/core/engine";
-import { cellAt, cellFront, eraOf, layoutIsland, ringCells, ringStage, visibleFigures } from "../src/render/island/layout";
+import { BUILDING_SCALE, cellAt, cellFront, eraOf, layoutIsland, lotCornerKeys, ringCells, ringStage, visibleFigures } from "../src/render/island/layout";
 
 describe("island layout", () => {
   it("cellAt inverts cellFront", () => {
@@ -51,5 +51,37 @@ describe("island layout", () => {
     expect(visibleFigures(6, 20)).toBe(3);
     expect(visibleFigures(160, 20)).toBe(20);
     expect(visibleFigures(160, 50)).toBe(50);
+  });
+  it("fields sit on a plot decal at scale 1, cottages keep the 1.3 building scale", () => {
+    const st = E.newGame({ seed: 1 });
+    st.hours = 200;
+    E.build(st, "-2,-2", "field");
+    E.build(st, "2,2", "cottage");
+    const lay = layoutIsland(st);
+    const plot = lay.ground.find((g) => g.key === "-2,-2")!;
+    expect(plot.frame).toMatch(/^g\/colony\/plot\//);
+    expect(lay.things.find((t) => t.key === "-2,-2")!.scale).toBe(1);
+    expect(lay.things.find((t) => t.key === "2,2")!.scale).toBe(BUILDING_SCALE);
+    expect(lay.ground.find((g) => g.key === "2,2")!.frame).toMatch(/^g\/colony\/lot\//);
+  });
+  it("grey fields use the grey plot decal", () => {
+    const st = E.newGame({ seed: 1 });
+    st.hours = 200;
+    E.build(st, "3,3", "field");
+    E.borrow(st, E.limit(st));
+    const lay = layoutIsland(st);
+    const plot = lay.ground.find((g) => g.key === "3,3")!;
+    expect(plot.frame.startsWith("grey/")).toBe(true);
+    expect(plot.frame).toMatch(/plot/);
+  });
+  it("lot corner ticks stay off until Build is open or a lot is selected", () => {
+    const st = E.newGame({ seed: 1 });
+    st.hours = 200;
+    E.build(st, "1,1", "cottage");
+    const empty = Object.keys(st.lots).filter((k) => st.lots[k] == null);
+    expect(lotCornerKeys(st.lots, null)).toEqual([]);
+    expect(lotCornerKeys(st.lots, "1,1")).toEqual(["1,1"]);
+    expect([...lotCornerKeys(st.lots, empty[0])].sort()).toEqual([...empty].sort());
+    expect([...lotCornerKeys(st.lots, null, true)].sort()).toEqual([...empty].sort());
   });
 });

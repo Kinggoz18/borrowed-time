@@ -38,8 +38,10 @@ function signature(p: Pen, type: BType, stage: number, top: number): void {
 const TOP: Partial<Record<BType, number[]>> = { cottage: [26, 26, 40, 40], tower: [35, 45, 64, 72] };
 
 function plinth(p: Pen, k: EraKit): void {
-  // era-uniform plinth so the lot grid reads (fieldstone rim in Village, driftwood boards in Colony)
-  p.box(0.08, 0.08, 0.92, 0.92, 0, 2.5, k.name === "village" ? k.stone : k.wood);
+  // small irregular footing, not a full-lot slab
+  const r = k.name === "village" ? k.stone : k.wood;
+  p.poly([p.P(0.38, 0.40, 0), p.P(0.64, 0.36, 0), p.P(0.70, 0.60, 0), p.P(0.42, 0.66, 0), p.P(0.32, 0.52, 0)], r.base, "inner");
+  p.poly([p.P(0.40, 0.42, 2.2), p.P(0.62, 0.38, 2.2), p.P(0.66, 0.58, 2.2), p.P(0.44, 0.62, 2.2)], r.light, "none");
 }
 function hourglass(p: Pen, a: number, b: number, z: number, size: number, frame = DRIFT.shade): void {
   const [x, y] = p.P(a, b, z);
@@ -52,7 +54,7 @@ function cropRows(p: Pen, k: EraKit, tall: number, rows = 4): void {
   for (let r = 0; r < rows; r++) {
     const b = 0.2 + (r * 0.6) / (rows - 1);
     for (let a = 0.22; a <= 0.8; a += 0.14) {
-      const [x, y] = p.P(a, b, 2.5);
+      const [x, y] = p.P(a, b, 0);
       const c = p.c;
       c.beginPath();
       c.moveTo(x - 2.4 * p.s, y);
@@ -70,11 +72,11 @@ function cropRows(p: Pen, k: EraKit, tall: number, rows = 4): void {
 function fence(p: Pen, k: EraKit, h: number, woven: boolean, rope = false): void {
   const pts: [number, number][] = [];
   for (let t = 0.12; t <= 0.89; t += 0.155) pts.push([t, 0.88], [0.88, t]);
-  for (const [a, b] of pts) p.post(a, b, 2.5, h, 1.6, k.wood.base);
+  for (const [a, b] of pts) p.post(a, b, 0, h, 1.6, k.wood.base);
   const rail = rope ? SAIL.shade : k.wood.light;
   for (const z of woven ? [h * 0.35, h * 0.7] : [h * 0.6]) {
-    p.line2(p.P(0.12, 0.88, 2.5 + z), p.P(0.88, 0.88, 2.5 + z), woven ? 0.9 : 0.6, rail);
-    p.line2(p.P(0.88, 0.88, 2.5 + z), p.P(0.88, 0.12, 2.5 + z), woven ? 0.9 : 0.6, rail);
+    p.line2(p.P(0.12, 0.88, z), p.P(0.88, 0.88, z), woven ? 0.9 : 0.6, rail);
+    p.line2(p.P(0.88, 0.88, z), p.P(0.88, 0.12, z), woven ? 0.9 : 0.6, rail);
   }
 }
 function chimney(p: Pen, k: EraKit, a: number, b: number, z: number, h: number): void {
@@ -90,12 +92,12 @@ type Recipe = (p: Pen, k: EraKit) => void;
 
 const VILLAGE_LOOKS: Partial<Record<BType, Recipe[]>> = {
   field: [
-    (p, k) => { p.diamond(0.1, 0.1, 0.9, 0.9, 2.5, k.ground.base); cropRows(p, k, 3); },
-    (p, k) => { p.diamond(0.1, 0.1, 0.9, 0.9, 2.5, k.ground.base); cropRows(p, k, 4); fence(p, k, 6, true); },
-    (p, k) => { p.diamond(0.1, 0.1, 0.9, 0.9, 2.5, k.ground.shade); cropRows(p, k, 9); fence(p, k, 6, true); },
+    (p, k) => { cropRows(p, k, 3); },
+    (p, k) => { cropRows(p, k, 4); fence(p, k, 6, true); },
+    (p, k) => { cropRows(p, k, 9); fence(p, k, 6, true); },
     (p, k) => {
-      p.diamond(0.1, 0.1, 0.9, 0.9, 2.5, k.ground.shade); cropRows(p, k, 10); fence(p, k, 6, true);
-      const [x, y] = p.P(0.5, 0.45, 2.5); // the scarecrow: the only vertical
+      cropRows(p, k, 10); fence(p, k, 6, true);
+      const [x, y] = p.P(0.5, 0.45, 0); // the scarecrow: the only vertical
       p.line2([x, y], [x, y - 26 * p.s], 0.8, k.wood.shade);
       p.line2([x - 8 * p.s, y - 18 * p.s], [x + 8 * p.s, y - 18 * p.s], 0.8, k.wood.shade);
       p.poly([[x - 4 * p.s, y - 22 * p.s], [x + 4 * p.s, y - 22 * p.s], [x, y - 32 * p.s]], k.roof.base, "inner");
@@ -155,8 +157,8 @@ const VILLAGE_LOOKS: Partial<Record<BType, Recipe[]>> = {
 
 const COLONY_LOOKS: Partial<Record<BType, Recipe[]>> = {
   field: [
-    (p, k) => { p.diamond(0.1, 0.1, 0.9, 0.9, 1, k.ground.base); for (const t of [0.12, 0.88]) p.line2(p.P(0.12, t, 2), p.P(0.88, t, 2), 1.2, DRIFT.shade); cropRows(p, k, 3, 3); },
-    (p, k) => { p.diamond(0.1, 0.1, 0.9, 0.9, 1, k.ground.shade); cropRows(p, k, 6, 4); fence(p, k, 6, false, true); },
+    (p, k) => { for (const t of [0.12, 0.88]) p.line2(p.P(0.12, t, 1), p.P(0.88, t, 1), 1.2, DRIFT.shade); cropRows(p, k, 3, 3); },
+    (p, k) => { cropRows(p, k, 6, 4); fence(p, k, 6, false, true); },
   ],
   cottage: [
     (p) => { p.diamond(0.15, 0.15, 0.85, 0.85, 0, DRIFT.light); p.gable(0.22, 0.25, 0.8, 0.75, 0, 18, SAIL, true, 0); p.line2(p.P(0.8, 0.5, 18), p.P(0.92, 0.5, 0), 0.4); },
@@ -195,7 +197,7 @@ export function drawBuilding(p: Pen, era: Era, type: BType, stage: number): void
   const book = era === "village" ? VILLAGE_LOOKS : COLONY_LOOKS;
   const list = book[type] ?? (era === "colony" ? VILLAGE_LOOKS[type] : undefined);
   const s = Math.min(stage, (list?.length ?? 1) - 1);
-  p.shadow(0.2, 0.2, 0.85, 0.85, 20);
+  if (type !== "field") p.shadow(0.2, 0.2, 0.85, 0.85, 20);
   if (list) list[s](p, era === "colony" && !COLONY_LOOKS[type] ? kitFor("village") : k);
   else generic(p, k, s);
   const top = TOP[type]?.[s] ?? (era === "colony" && type === "cottage" ? 18 : 20);

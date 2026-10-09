@@ -2,11 +2,11 @@
  * Ground, ring, people, boats and effects for the island stand-ins (ART_BIBLE.md §2, §4, §5, §9).
  * Same rules as the buildings: 2:1 iso, ink outlines, baked 3-step light from the upper left.
  */
-import { BRASS_PIN, DRIFT, FOAM, INK, SAIL, STRIPE, TARR, kitFor, type Era, type Ramp } from "./palette";
+import { BRASS_PIN, DRIFT, FOAM, INK, SAIL, STRIPE, TARR, kitFor, type Era, type EraKit, type Ramp } from "./palette";
 import type { Ctx, Pen } from "./pen";
 
-export type GroundKind = "grass" | "lot" | "sand" | "road";
-export const GROUND_KINDS: GroundKind[] = ["grass", "lot", "sand", "road"];
+export type GroundKind = "grass" | "lot" | "sand" | "road" | "plot";
+export const GROUND_KINDS: GroundKind[] = ["grass", "lot", "sand", "road", "plot"];
 export const GROUND_VARIANTS = 3;
 
 /** Small deterministic hash for scatter detail. */
@@ -16,48 +16,104 @@ const hash = (a: number, b: number): number => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
-/** One ground tile. Ground tiles have no outer line (they tile); detail strokes use the inner weight. */
+const wob = (v: number, n: number, amt = 0.05): number => amt * (hash(v, n) - 0.5) * 2;
+
+/** One ground tile. Ground tiles have no outer line (they tile); they sit flush, not as raised slabs. */
 export function drawGround(p: Pen, era: Era, kind: GroundKind, v: number): void {
   const k = kitFor(era);
-  const base: Record<GroundKind, Ramp> = { grass: k.grass, lot: k.ground, sand: SAND, road: ROAD };
+  if (kind === "plot") {
+    drawPlot(p, k, v);
+    return;
+  }
+  const base: Record<Exclude<GroundKind, "plot">, Ramp> = { grass: k.grass, lot: k.grass, sand: SAND, road: ROAD };
   const r = base[kind];
   p.diamond(0, 0, 1, 1, 0, r.base, "none");
-  // the edge toward the light is a step lighter, the front edges a step darker: a soft bevel
-  p.poly([p.P(0, 0), p.P(1, 0), p.P(0.94, 0.06), p.P(0.06, 0.06)], r.light, "none");
-  p.poly([p.P(1, 1), p.P(1, 0), p.P(0.94, 0.06), p.P(0.94, 0.94)], r.shade, "none");
+  if (kind === "sand") {
+    // a hint of form, not a bevelled slab
+    p.poly([p.P(0.02, 0.02), p.P(0.98, 0.02), p.P(0.9, 0.1), p.P(0.1, 0.1)], r.light, "none");
+  }
+  if (kind === "lot") {
+    // grass/dirt blend: worked earth patches, no stakes, no outline, no bevel
+    for (let n = 0; n < 5; n++) {
+      const a = 0.18 + 0.64 * hash(v * 5 + n, 3), b = 0.18 + 0.64 * hash(n + 9, v + 2);
+      const s = 0.1 + 0.08 * hash(n, v);
+      p.diamond(a, b, a + s, b + s * 0.85, 0, hash(n, v + 7) > 0.45 ? k.ground.base : k.ground.light, "none");
+    }
+  }
   const c = p.c;
   for (let n = 0; n < 7; n++) {
     const a = 0.15 + 0.7 * hash(v * 13 + n, kind.length), b = 0.15 + 0.7 * hash(n * 7 + 3, v + 11);
     const [x, y] = p.P(a, b);
-    c.strokeStyle = kind === "grass" ? r.shade : r.light;
+    c.strokeStyle = kind === "grass" || kind === "lot" ? k.grass.shade : r.light;
     c.lineWidth = p.line / 2;
     c.lineCap = "round";
     c.beginPath();
-    if (kind === "grass") {
+    if (kind === "grass" || kind === "lot") {
       c.moveTo(x - 2 * p.s, y);
       c.lineTo(x - 1 * p.s, y - 3 * p.s);
       c.moveTo(x + 1 * p.s, y);
       c.lineTo(x + 2 * p.s, y - 3 * p.s);
-    } else if (kind === "lot") {
-      // furrows of worked earth along the a axis
-      const [x2, y2] = p.P(a + 0.12, b);
-      c.moveTo(x, y);
-      c.lineTo(x2, y2);
     } else {
       c.arc(x, y, 0.8 * p.s, 0, Math.PI * 2);
     }
     c.stroke();
   }
-  if (kind === "lot") {
-    // the stake-and-string border that says "this is a building lot"
-    p.poly([p.P(0.08, 0.08), p.P(0.92, 0.08), p.P(0.92, 0.92), p.P(0.08, 0.92)], null, "inner");
-    for (const [a, b] of [[0.08, 0.08], [0.92, 0.08], [0.92, 0.92], [0.08, 0.92]] as const) p.post(a, b, 0, 4, 0.8, DRIFT.base);
-  }
   if (kind === "road") {
     for (let n = 0; n < 5; n++) {
       const a = 0.2 + 0.6 * hash(n + 40, v), b = 0.2 + 0.6 * hash(v + 9, n + 2);
-      p.diamond(a, b, a + 0.08, b + 0.08, 0, ROAD.light, "inner");
+      p.diamond(a, b, a + 0.08, b + 0.08, 0, ROAD.light, "none");
     }
+  }
+}
+
+/** Field soil as a ground decal: height 0, no outline, no shadow, edge feathered into grass. */
+function drawPlot(p: Pen, k: EraKit, v: number): void {
+  p.diamond(0, 0, 1, 1, 0, k.grass.base, "none");
+  const soil = [
+    p.P(0.10 + wob(v, 1), 0.12 + wob(v, 2), 0),
+    p.P(0.50 + wob(v, 3, 0.04), 0.05 + wob(v, 4, 0.03), 0),
+    p.P(0.90 + wob(v, 5), 0.11 + wob(v, 6), 0),
+    p.P(0.95 + wob(v, 7, 0.03), 0.50 + wob(v, 8), 0),
+    p.P(0.88 + wob(v, 9), 0.90 + wob(v, 10), 0),
+    p.P(0.50 + wob(v, 11, 0.04), 0.96 + wob(v, 12, 0.03), 0),
+    p.P(0.10 + wob(v, 13), 0.88 + wob(v, 14), 0),
+    p.P(0.05 + wob(v, 15, 0.03), 0.50 + wob(v, 16), 0),
+  ];
+  p.poly(soil, k.ground.base, "none");
+  const inner = [
+    p.P(0.22 + wob(v, 21, 0.03), 0.24 + wob(v, 22, 0.03), 0),
+    p.P(0.78 + wob(v, 23, 0.03), 0.22 + wob(v, 24, 0.03), 0),
+    p.P(0.80 + wob(v, 25, 0.03), 0.78 + wob(v, 26, 0.03), 0),
+    p.P(0.22 + wob(v, 27, 0.03), 0.80 + wob(v, 28, 0.03), 0),
+  ];
+  p.poly(inner, k.ground.shade, "none");
+  const c = p.c;
+  c.strokeStyle = k.ground.light;
+  c.lineWidth = Math.max(0.6, p.line / 3);
+  c.lineCap = "round";
+  for (let n = 0; n < 5; n++) {
+    const b = 0.22 + n * 0.14 + wob(v, 30 + n, 0.02);
+    c.beginPath();
+    const [x0, y0] = p.P(0.2, b, 0);
+    const [x1, y1] = p.P(0.8, b, 0);
+    c.moveTo(x0, y0);
+    c.lineTo(x1, y1);
+    c.stroke();
+  }
+  // grass tufts along the soil edge so the plot feathers into the neighbouring tiles
+  c.strokeStyle = k.grass.shade;
+  c.lineWidth = p.line / 2;
+  for (let n = 0; n < 8; n++) {
+    const t = n / 8;
+    const a = 0.08 + 0.84 * ((t + hash(v, n + 40)) % 1);
+    const b = n % 2 ? 0.08 + 0.06 * hash(n, v) : 0.86 + 0.08 * hash(v, n);
+    const [x, y] = p.P(n % 2 ? a : n < 4 ? 0.1 : 0.88, n % 2 ? b : a, 0);
+    c.beginPath();
+    c.moveTo(x - 1.5 * p.s, y);
+    c.lineTo(x, y - 2.5 * p.s);
+    c.moveTo(x + 1.5 * p.s, y);
+    c.lineTo(x + 0.4 * p.s, y - 2.2 * p.s);
+    c.stroke();
   }
 }
 const SAND: Ramp = { light: "#E8DCB8", base: "#D9C9A0", shade: "#B9A87F" };

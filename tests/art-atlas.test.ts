@@ -15,6 +15,8 @@ describe("island atlas catalogue", () => {
           expect(names).toContain(buildingFrame(era, t, s, true));
         }
       expect(names).toContain(groundFrame(era, "lot", 0, true));
+      expect(names).toContain(groundFrame(era, "plot", 0));
+      expect(names).toContain(groundFrame(era, "plot", 0, true));
       expect(names).toEqual(expect.arrayContaining(["gnomon", "tent", "boat", "fx/fire", "p/raider/1", "ring/3/segA", "gate/0/B/1"]));
     });
     it(`${era}: fits one 2048 page at the high tier (s = 2)`, () => {
