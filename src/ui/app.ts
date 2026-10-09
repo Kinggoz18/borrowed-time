@@ -696,7 +696,7 @@ export class GameUI {
         kicker: hint.hidden ? HIDDEN_TITLE : `${KIND_TITLE[hint.kind]} · ${BAND_WORD[hint.band!]}`,
         title: hint.line,
         body: [
-          h("p", { class: "dusk-lead" }, hint.hidden ? HIDDEN_TITLE : `${KIND_TITLE[hint.kind]} tonight. ${BAND_WORD[hint.band!]} raid.`),
+          h("p", { class: "dusk-lead" }, hint.hidden ? HIDDEN_TITLE : `${KIND_TITLE[hint.kind]}. ${BAND_WORD[hint.band!]} raid.`),
           duskMeter(D, lo, hi, bar, E.hasB(st, "observatory")),
         ],
         buttons: [
