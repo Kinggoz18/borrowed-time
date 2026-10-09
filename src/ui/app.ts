@@ -5,7 +5,7 @@
  */
 import * as E from "../core/engine";
 import type { GameEvent } from "../core/game";
-import { duskHint } from "../core/hints";
+import { duskRead, rangeBar } from "../core/hints";
 import { B, COUNT, EVENTS, LOT_TYPES, TIERS, type BType } from "../core/rules";
 import { cloneState } from "../core/snapshot";
 import type { IslandState } from "../core/state";
@@ -16,7 +16,7 @@ import { FAST, Session } from "../game/session";
 import { saveSettings, type Settings } from "../game/settings";
 import type { KV } from "../platform/storage";
 import type { Cue, Haptics, Sfx } from "../platform/sfx";
-import { BAND_WORD, BLURB, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
+import { BAND_WORD, BLURB, HIDDEN_TITLE, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
 import { h, icon, type Child } from "./dom";
 
 export interface UiDeps {
@@ -74,6 +74,7 @@ export class GameUI {
   // ---------- home ----------
   showHome(hasSave: boolean, saveNote = ""): void {
     this.screen = "home";
+    this.scoreScene("menu");
     this.root.replaceChildren(
       h(
         "section",
@@ -119,6 +120,7 @@ export class GameUI {
     if (this.d.dev) kids.push(h("button", { class: "btn icon-btn debug", "aria-label": "Debug", "data-act": "debug", onclick: () => this.openDebug() }, icon("bug")));
     this.root.replaceChildren(...kids.filter((k): k is HTMLElement => !!k));
     this.hudCache = "";
+    this.scoreScene();
     this.d.view.setLots(s.state);
     this.d.view.sync(s.state, { dusk: s.state.phase !== "day" });
     this.updateHud();
@@ -272,6 +274,7 @@ export class GameUI {
   private async firstRun(): Promise<void> {
     const s = this.session!;
     s.paused = true;
+    this.scoreScene("hesper");
     const a = await this.card({
       cls: "hesper",
       title: LINES.introTitle,
@@ -284,6 +287,7 @@ export class GameUI {
     s.meta.introDone = true;
     void s.save();
     s.paused = false;
+    this.scoreScene();
     this.setCoach("palisade");
     setTimeout(() => this.seasonToast(), 600);
   }
@@ -304,6 +308,7 @@ export class GameUI {
     this.selected = null;
     this.d.view.highlight(null);
     if (this.session && !this.cardOpen) this.session.paused = false;
+    this.scoreScene();
   }
   private refreshSheet(): void {
     const open = this.layer.querySelector<HTMLElement>(".sheet")?.dataset.kind;
@@ -455,6 +460,7 @@ export class GameUI {
     ];
     const el = this.sheet("Hesper, the Clockkeeper", body, "keeper");
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "keeper";
+    this.scoreScene("hesper");
   }
 
   private openCharter(): void {
@@ -482,10 +488,12 @@ export class GameUI {
   card(o: { title: string; body?: Child[] | string[]; buttons: { id: string; label: string; kind?: "primary" | "danger"; icon?: Parameters<typeof icon>[0]; note?: string; disabled?: boolean }[]; cls?: string; art?: string; ask?: string; kicker?: string }): Promise<string> {
     return new Promise((resolve) => {
       this.cardOpen = true;
+      this.d.sfx.duck(true);
       const wrap = h("div", { class: "card-wrap" });
       const done = (id: string) => {
         wrap.remove();
         this.cardOpen = !!this.root.querySelector(".card-wrap");
+        this.d.sfx.duck(false);
         this.cue("tap", "light");
         resolve(id);
       };
@@ -523,23 +531,27 @@ export class GameUI {
     rest?.classList.remove("on");
     rest?.setAttribute("aria-pressed", "false");
     this.d.view.sync(s.state, { dusk: true });
+    this.scoreScene("dusk");
     this.cue("dusk", "medium");
     const st = s.state;
-    const hint = duskHint(st);
+    const read = duskRead(st);
+    const hint = read.hint;
     let decision: E.Decision = "hold";
     if (hint.kind !== "quiet") {
-      const D = Math.round(E.defence(st));
-      const Dw = Math.round(E.defence(st, { walls: true }));
-      const c = cloneState(st);
-      const canB = E.canBorrowDusk(st);
-      const loan = E.duskLoan(st);
-      if (canB) E.applyDecision(c, "borrow");
-      const Db = Math.round(E.defence(c, { borrow: true }));
+      const D = read.defence;
+      const Dw = read.wallsDefence;
+      const Db = read.borrowDefence;
+      const canB = read.canBorrow;
+      const loan = read.loan;
+      const [lo, hi] = hint.range!;
+      const bar = rangeBar(D, lo, hi);
       const p = this.card({
         cls: "dusk",
-        kicker: `${KIND_TITLE[hint.kind]} · ${BAND_WORD[hint.band!]}`,
+        kicker: hint.hidden ? HIDDEN_TITLE : `${KIND_TITLE[hint.kind]} · ${BAND_WORD[hint.band!]}`,
         title: hint.line,
-        body: [h("p", { class: "sub" }, icon("shield"), ` Your defence now: ${D}. They never show their numbers.`), hint.range ? h("p", { class: "sub" }, `Ada counts ${hint.range[0]}–${hint.range[1]}.`) : null],
+        body: [
+          duskMeter(D, lo, hi, bar, E.hasB(st, "observatory")),
+        ],
         buttons: [
           { id: "hold", label: "Hold", note: `Defence ${D}. Keep your Hours.`, icon: "shield" },
           { id: "walls", label: "Everyone to the walls", note: `Defence ${Dw}. No morning bonus. More hurt if they break in.`, icon: "people" },
@@ -559,7 +571,11 @@ export class GameUI {
     if (raid && raid.kind === "raid" && !("quiet" in raid.result && raid.result.quiet)) {
       const r = raid.result as E.RaidResult;
       this.once("raid", LINES.firstRaid);
+      this.scoreScene("raid");
+      this.d.sfx.duck(true);
       await this.d.view.playRaid(r);
+      this.d.sfx.duck(false);
+      this.scoreScene("dusk");
       this.d.view.sync(s.state, { dusk: true });
       this.updateHud();
       this.cue(r.won ? "held" : "lost", r.won ? "medium" : "heavy");
@@ -581,6 +597,7 @@ export class GameUI {
       await this.card({ cls: r.won ? "held" : "lost", kicker: r.boss ? "The Long Dusk" : "Tonight", title: r.won ? (r.D - r.S < r.S * 0.08 ? "In the nick of time!" : "Held!") : "They broke through.", body: lines, buttons: [{ id: "sleep", label: "Sleep", kind: "primary", icon: "moon" }] });
     }
     await this.sleep();
+    this.scoreScene();
     this.inDusk = false;
   }
 
@@ -593,10 +610,12 @@ export class GameUI {
     const seized = evs.find((e) => e.kind === "seized");
     if (seized && seized.kind === "seized") {
       this.cue("seize", "heavy");
+      this.scoreScene("hesper");
       await this.d.view.playSeizure(seized.seizure.k);
       this.d.view.sync(s.state, { dusk: true });
       this.updateHud();
       await this.card({ cls: "hesper", art: "tent", kicker: "Over the limit at night", title: `Hesper took your ${B[seized.seizure.type].name}.`, body: [h("p", { class: "quote" }, LINES.seized), h("p", {}, `${seized.seizure.credit} came off what you owe. Stay under the limit at night to keep your buildings.`)], buttons: [{ id: "ok", label: "Understood", kind: "primary" }] });
+      this.scoreScene("dusk");
     }
     const end = evs.find((e) => e.kind === "seasonEnd");
     if (end && end.kind === "seasonEnd") {
@@ -606,6 +625,7 @@ export class GameUI {
     const up = evs.find((e) => e.kind === "tierUp");
     if (up && up.kind === "tierUp") {
       this.cue("tierUp", "heavy");
+      this.d.sfx.sting();
       await this.d.view.playTierUp();
       this.d.view.setLots(s.state);
       this.d.view.sync(s.state);
@@ -631,6 +651,20 @@ export class GameUI {
     this.seasonToast();
   }
 
+  /** Scene follows the screen and the hour, never a tap. */
+  private scoreScene(scene?: "menu" | "day" | "dusk" | "raid" | "hesper"): void {
+    const era = this.session?.state.tier ?? 0;
+    if (scene) {
+      this.d.sfx.setScene(scene, era);
+      return;
+    }
+    if (!this.session || this.screen === "home") {
+      this.d.sfx.setScene("menu", 0);
+      return;
+    }
+    this.d.sfx.setScene(this.session.state.phase === "day" ? "day" : "dusk", era);
+  }
+
   // ---------- settings ----------
   showSettings(from: Screen): void {
     const st = this.d.settings;
@@ -641,20 +675,40 @@ export class GameUI {
         if (this.session && !this.cardOpen && !this.sheetOpen) this.session.paused = false;
       }
     };
-    const toggle = (key: "sound" | "haptics", label: string, ic: Parameters<typeof icon>[0]) =>
+    const apply = () => {
+      this.d.sfx.setMixer({ sound: st.sound, music: st.music, sfxVol: st.sfxVol, musicVol: st.musicVol });
+      this.d.haptics.enabled = st.haptics;
+      void saveSettings(this.d.kv, st);
+    };
+    const toggle = (key: "sound" | "music" | "haptics", label: string, ic: Parameters<typeof icon>[0]) =>
       h("label", { class: "setting" }, icon(ic), h("span", {}, label), h("input", { type: "checkbox", role: "switch", checked: st[key], "data-set": key, onchange: (e) => {
         st[key] = (e.target as HTMLInputElement).checked;
-        this.d.sfx.enabled = st.sound;
-        this.d.haptics.enabled = st.haptics;
-        void saveSettings(this.d.kv, st);
+        apply();
         this.cue("tap", "light");
       } }));
+    const slider = (key: "musicVol" | "sfxVol", label: string, ic: Parameters<typeof icon>[0]) =>
+      h("label", { class: "setting vol" }, icon(ic), h("span", {}, label), h("input", {
+        type: "range",
+        min: "0",
+        max: "100",
+        step: "1",
+        value: Math.round(st[key] * 100),
+        "data-set": key,
+        "aria-label": label,
+        oninput: (e) => {
+          st[key] = Number((e.target as HTMLInputElement).value) / 100;
+          apply();
+        },
+      }));
     if (this.session) this.session.paused = true;
     const panel = h(
       "section",
       { class: "settings", "data-screen": "settings", role: "dialog", "aria-label": "Settings" },
       h("header", {}, h("button", { class: "btn icon-btn", "aria-label": "Back", "data-act": "back", onclick: back }, icon("back")), h("h2", {}, "Settings")),
-      toggle("sound", "Sound", "sound"),
+      toggle("music", "Music", "note"),
+      slider("musicVol", "Music volume", "note"),
+      toggle("sound", "Sound effects", "sound"),
+      slider("sfxVol", "Effects volume", "sound"),
       toggle("haptics", "Vibration", "vibrate"),
       h(
         "label",
@@ -716,5 +770,28 @@ export class GameUI {
 
 function req(ok: boolean, text: string, word?: string): HTMLElement {
   return h("span", { class: "req" + (ok ? " ok" : "") }, icon(ok ? "check" : "cross"), text, word ? h("small", {}, ` ${word}`) : null);
+}
+
+/** Dusk card hook: defence, a raider range, and a bar against that defence. */
+function duskMeter(
+  def: number,
+  lo: number,
+  hi: number,
+  bar: { loPct: number; widthPct: number; defPct: number },
+  observatory: boolean,
+): HTMLElement {
+  const counted = observatory ? `Ada counts ${lo}–${hi}.` : `Raiders about ${lo}–${hi}.`;
+  return h(
+    "div",
+    { class: "dusk-read", "data-dusk-def": def, "data-dusk-lo": lo, "data-dusk-hi": hi },
+    h("p", { class: "sub" }, icon("shield"), ` Your defence: ${def}`),
+    h("p", { class: "sub" }, icon("boat"), ` ${counted}`),
+    h(
+      "div",
+      { class: "dusk-bar", role: "img", "aria-label": `Raiders ${lo} to ${hi} against defence ${def}` },
+      h("i", { class: "raid", style: `left:${bar.loPct}%;width:${bar.widthPct}%` }),
+      h("b", { class: "mark", style: `left:${bar.defPct}%` }),
+    ),
+  );
 }
 const safest = (st: IslandState): string | undefined => E.greyOrder(st).slice().reverse().find((k) => E.isFree(st, k));

@@ -51,8 +51,11 @@ export async function bootGame(): Promise<void> {
   const view = new IslandView(app, cfg);
   const sfx = new Sfx();
   const haptics = new Haptics();
-  sfx.enabled = settings.sound;
+  sfx.setMixer({ sound: settings.sound, music: settings.music, sfxVol: settings.sfxVol, musicVol: settings.musicVol });
   haptics.enabled = settings.haptics;
+  sfx.setScene("menu");
+  sfx.unlock();
+  addEventListener("pointerdown", () => sfx.unlock(), { once: true });
   const dev = import.meta.env.DEV;
   const ui = new GameUI(document.body, { view, sfx, haptics, kv, settings, dev, onQuality: () => location.reload() });
 
@@ -89,7 +92,12 @@ export async function bootGame(): Promise<void> {
 
   const save = () => void session?.save();
   addEventListener("pagehide", save);
-  document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && save());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      save();
+      sfx.suspend();
+    } else sfx.resume();
+  });
 
   let fps = 60;
   app.ticker.add((t) => {

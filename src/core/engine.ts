@@ -5,6 +5,7 @@
  * prototype on purpose, so campaigns match it bit for bit (tests/parity.test.ts).
  */
 import { step, seedState, type Roll } from "./rng";
+import { raidKind, tacticOf, type RaidKind, type RaidTactic } from "./raiders";
 import {
   B, BASE_DAY, BASE_FOOD, BASE_HOUSE, BOSS_K, BUILD, COUNT, DAY_KIND, EVENTS, FOOT, MAX_LEVEL, MIN_DAY,
   PEOPLE_DEF, PEOPLE_INC, RAID_K, SEASON_DAYS, TECH, THREAT_EXP, TIERS, costMul, kij, lotKeys, ramp,
@@ -375,6 +376,7 @@ export interface RaidResult {
   season: number;
   boss: boolean;
   quiet?: false;
+  kind: RaidKind;
   S: number;
   D: number;
   decision: Decision;
@@ -396,13 +398,31 @@ export type DuskResult = RaidResult | QuietResult;
  * The night's fight, given the actual raider strength S (already rolled). Shared by the game,
  * the bots and resolveRaid(snapshot, strength, seed).
  */
+function hitOrder(st: IslandState, tac: RaidTactic): string[] {
+  if (tac.richestFirst) {
+    return blds(st)
+      .slice()
+      .sort((a, b) => b[1].n - a[1].n || b[1].inv - a[1].inv || (a[0] < b[0] ? -1 : 1))
+      .map(([k]) => k);
+  }
+  const go = greyOrder(st);
+  const g = go.slice(0, greyCount(st)).filter((k) => st.lots[k]);
+  const rest = go.filter((k) => st.lots[k] && !g.includes(k));
+  const out = [...g];
+  for (let i = 0; i < tac.greyBias; i++) out.push(...g);
+  return out.concat(rest);
+}
+
 export function fight(st: IslandState, decision: Decision, S: number): RaidResult {
+  const kind = raidKind(st);
+  const tac = tacticOf(st, kind);
+  const S1 = Math.round(S * tac.scale);
   const boss = DAY_KIND[st.day] === "boss";
   const D = defence(st, { walls: decision === "walls", borrow: decision === "borrow" });
-  const ev: RaidResult = { day: st.day, season: st.season, boss, S, D, decision, won: D >= S, loot: 0, stolen: 0, damaged: [], villagersLost: 0 };
+  const ev: RaidResult = { day: st.day, season: st.season, boss, kind, S: S1, D, decision, won: D >= S1, loot: 0, stolen: 0, damaged: [], villagersLost: 0 };
   if (ev.won) {
     // salvage: repelled raiders leave the hours they carried; in borrowed light we find more
-    ev.loot = Math.round((0.12 * income(st) + BUILD.salvage * S + 2) * (decision === "borrow" ? 1.5 : 1));
+    ev.loot = Math.round((0.12 * income(st) + BUILD.salvage * S1 + 2) * (decision === "borrow" ? 1.5 : 1) * tac.lootMul);
     st.hours += ev.loot;
     if (boss) st.stats.bossWon++;
     else st.stats.raidsWon++;
@@ -411,19 +431,24 @@ export function fight(st: IslandState, decision: Decision, S: number): RaidResul
     if (boss) st.stats.bossLost++;
     else st.stats.raidsLost++;
     gainXP(st, boss ? 6 : 3);
-    const f = Math.min(1, (S - D) / S) * (boss ? 1.5 : 1);
+    const f = Math.min(1, (S1 - D) / S1) * (boss ? 1.5 : 1);
     const hosp = hasB(st, "hospital");
     const heal = hosp ? 0.4 + 0.02 * lvOf(st, "hospital") : 0;
-    ev.stolen = Math.round(Math.min(st.hours, f * income(st) * (hosp ? 0.8 : 1)));
+    ev.stolen = Math.round(Math.min(st.hours, f * income(st) * (hosp ? 0.8 : 1) * tac.stealMul));
     st.hours -= ev.stolen;
-    // raiders run the roads; the hospital patches grey land; grey land is hit first
-    let hits = Math.ceil(f * (4 + 2 * st.tier)) + (st.road ? 1 : 0) - (hosp ? 1 : 0);
-    const go = greyOrder(st);
-    const g = go.slice(0, greyCount(st));
-    const order = g.concat(go.filter((k) => !g.includes(k))).filter((k) => st.lots[k]);
+    // raiders run the roads; the hospital patches grey land; grey land is hit first unless a type says otherwise
+    let hits = Math.ceil(f * (4 + 2 * st.tier) * tac.hitMul) + (st.road ? 1 : 0) - (hosp ? 1 : 0);
+    if (tac.maxHits != null) hits = Math.min(hits, tac.maxHits);
+    if (tac.palisadeFirst && hits > 0 && st.pal && st.pal.n > 0) {
+      st.pal.n--;
+      ev.damaged.push({ k: "pal", type: "palisade", levels: 1 });
+      hits--;
+    }
+    const order = hitOrder(st, tac);
     for (const k of order) {
       if (hits <= 0) break;
-      const b = st.lots[k]!;
+      const b = st.lots[k];
+      if (!b) continue;
       if (b.n === 0) {
         if (boss) {
           st.lots[k] = null;

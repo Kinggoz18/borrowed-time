@@ -40,6 +40,7 @@ export const ICON = {
   boat: svg('<path d="M3 15h18l-3 5H6zM12 15V3l6 9h-6"/>'),
   back: svg('<path d="M15 5l-7 7 7 7"/>'),
   sound: svg('<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9a4 4 0 0 1 0 6"/>'),
+  note: svg('<path d="M9 18a3 3 0 1 1-2-2.8V6l10-2v10"/><circle cx="17" cy="16" r="3"/>'),
   vibrate: svg('<rect x="8" y="4" width="8" height="16" rx="2"/><path d="M4 8v8M20 8v8"/>'),
   rotate: svg('<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 3h6l-2-2M11 1l2 2"/>'),
   bug: svg('<rect x="7" y="7" width="10" height="13" rx="5"/><path d="M12 7V4M3 12h4M17 12h4M4 6l3 3M20 6l-3 3M4 19l3-3M20 19l-3-3"/>'),
