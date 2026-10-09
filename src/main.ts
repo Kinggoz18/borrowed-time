@@ -1,11 +1,10 @@
 import { Capacitor } from "@capacitor/core";
 import { Application } from "pixi.js";
 import { PerfRun } from "./perf/runner";
-import type { Mode, Scenario, TierConfig } from "./render/config";
+import { AutoDrop, detectTier, lowerTier, probeDevice, TIERS } from "./perf/quality";
+import type { Mode, Scenario, Tier } from "./render/config";
 import { StressScene } from "./render/scene";
 import { CommandLog } from "./sim/commands";
-
-const HIGH: TierConfig = { tier: "high", dprCap: 2, bloom: true, bloomResolution: 0.5, particles: 300, villagers: 50, raiders: 24, boats: 6, puppets: true, atlas: "high", budgetMB: 128 };
 
 declare global {
   interface Window {
@@ -32,8 +31,12 @@ async function boot(): Promise<void> {
   window.__bt = state;
   const params = new URLSearchParams(location.search);
   const scenario = readScenario(params);
-  const cfg = HIGH;
+  const asked = params.get("tier");
+  const forced = asked === "low" || asked === "mid" || asked === "high" ? (asked as Tier) : null;
+  const detected = detectTier(probeDevice());
+  const cfg = TIERS[forced ?? detected.tier];
   const log = new CommandLog();
+  log.append({ kind: "setTier", tier: cfg.tier, reason: forced ? (params.get("dropped") ? "drop" : "manual") : "auto" }, performance.now());
   log.append({ kind: "setMode", mode: scenario.mode }, performance.now());
   log.append({ kind: "setCrowd", on: scenario.crowd }, performance.now());
   const app = new Application();
@@ -50,6 +53,9 @@ async function boot(): Promise<void> {
   const scene = new StressScene(app, cfg, scenario);
   await scene.load();
   const run = new PerfRun(app, cfg, scenario, log);
+  run.tierReason = forced ? (params.get("dropped") ? `auto-dropped from ${params.get("dropped")}` : "chosen") : `auto: ${detected.reason}`;
+  // Auto-drop only when the tier was auto-picked, and never during the 10-minute check.
+  const autoDrop = forced && !params.get("dropped") ? null : scenario.mode === "throttle" ? null : new AutoDrop();
   state.scene = scene;
   state.run = run;
   app.renderer.on("resize", () => scene.resize());
@@ -58,7 +64,14 @@ async function boot(): Promise<void> {
     const now = performance.now();
     const info = scene.update((now - last) / 1000);
     const updateMs = performance.now() - now;
-    if (state.ready) run.frame(now - last, updateMs, info);
+    if (state.ready) {
+      const rows = run.recorder.rows.length;
+      run.frame(now - last, updateMs, info);
+      const next = lowerTier(cfg.tier);
+      if (autoDrop && next && run.recorder.rows.length > rows && autoDrop.push(run.recorder.rows[rows].p95)) {
+        relaunch({ tier: next, dropped: cfg.tier });
+      }
+    }
     last = now;
     state.frames++;
     if (!state.ready && state.frames >= 2) {
@@ -71,7 +84,7 @@ async function boot(): Promise<void> {
   });
   if (__PERF_HUD__) {
     const { mountHud } = await import("./perf/hud");
-    mountHud({ run, log, relaunch });
+    mountHud({ run, log, relaunch, tierParam: forced && !params.get("dropped") ? forced : "auto" });
   }
 }
 

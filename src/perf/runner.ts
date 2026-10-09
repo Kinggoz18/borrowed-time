@@ -12,6 +12,7 @@ export class PerfRun {
   readonly recorder = new FrameRecorder();
   readonly counter?: DrawCallCounter;
   startupMs = 0;
+  tierReason = "";
   texMB = 0;
   lastRow: SecondRow | null = null;
   lastDrawCalls = 0;
@@ -83,6 +84,7 @@ export class PerfRun {
       screen: `${screen.width}x${screen.height} @${window.devicePixelRatio}`,
       renderResolution: this.app.renderer.resolution,
       tier: this.cfg.tier,
+      tierReason: this.tierReason,
       mode: this.scenario.mode,
       crowd: this.scenario.crowd ? "on" : "off",
       startupMs: this.startupMs,

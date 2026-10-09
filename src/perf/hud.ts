@@ -26,9 +26,11 @@ export interface HudOptions {
   log: CommandLog;
   /** Reload with new URL params (tier, mode, crowd). */
   relaunch: (params: Record<string, string>) => void;
+  /** The tier button to show as chosen: auto, low, mid or high. */
+  tierParam: string;
 }
 
-export function mountHud({ run, relaunch }: HudOptions): HTMLElement {
+export function mountHud({ run, relaunch, tierParam }: HudOptions): HTMLElement {
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -60,6 +62,15 @@ export function mountHud({ run, relaunch }: HudOptions): HTMLElement {
   document.body.appendChild(el);
   const q = <T extends HTMLElement>(k: string) => el.querySelector(`[data-k="${k}"]`) as T;
   const mode = run.scenario.mode;
+  const tiers = q("tiers");
+  for (const t of ["auto", "low", "mid", "high"]) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = t[0].toUpperCase() + t.slice(1);
+    b.setAttribute("aria-pressed", String(t === tierParam));
+    b.addEventListener("click", () => relaunch({ tier: t, dropped: "" }));
+    tiers.appendChild(b);
+  }
   el.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((b) => {
     b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
     b.addEventListener("click", () => relaunch({ mode: b.dataset.mode ?? "loop" }));
@@ -106,7 +117,7 @@ export function mountHud({ run, relaunch }: HudOptions): HTMLElement {
       const r = run.lastRow;
       q("fps").textContent = r ? `${r.fps} fps · p50 ${r.p50} · p95 ${r.p95} · p99 ${r.p99} ms` : "measuring…";
       q("gpu").textContent = `${run.lastDrawCalls} draw calls · ${run.texMB.toFixed(0)} MB textures · ${r ? r.heapMB : 0} MB heap`;
-      q("state").textContent = `${run.cfg.tier} · ${run.scenario.mode} · ${r ? r.phase : ""}${r?.raid ? " · raid" : ""} · start ${(run.startupMs / 1000).toFixed(2)} s`;
+      q("state").textContent = `${run.cfg.tier} (${run.tierReason}) · ${run.scenario.mode} · ${r ? r.phase : ""}${r?.raid ? " · raid" : ""} · start ${(run.startupMs / 1000).toFixed(2)} s`;
       const th = q("throttle");
       if (run.scenario.mode === "throttle") {
         const left = Math.ceil(run.throttleLeftS);
