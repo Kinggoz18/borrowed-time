@@ -9,7 +9,12 @@
     "build:gate": "tsc --noEmit && vite build --mode gate",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
-    "apk:gate": "npm run build:gate && npx cap sync android && cd android && ./gradlew assembleDebug"
+    "apk:gate": "npm run build:gate && npx cap sync android && cd android && ./gradlew assembleDebug",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "ci": "bash scripts/ci.sh"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
@@ -22,8 +27,13 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.3",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.0",
     "@types/node": "^26.6.4",
+    "eslint": "^10.12.0",
     "typescript": "^6.0.3",
-    "vite": "^8.3.4"
+    "typescript-eslint": "^8.71.1",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
   }
 }
