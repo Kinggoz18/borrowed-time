@@ -58,6 +58,8 @@ export class IslandView {
   private shadow = new Graphics();
   private tex!: IslandTextures;
   private atlas!: IslandAtlas;
+  /** Previous era atlases kept alive so Pixi can drop GPU bind groups without a warning. */
+  private retired: IslandTextures[] = [];
   private thumbs = new Map<string, string>();
   private era = "";
   private layout!: IslandLayout;
@@ -126,16 +128,7 @@ export class IslandView {
       this.grain.eventMode = "none";
       this.overlay.addChild(this.grain, this.wash);
     } else this.grain.texture = this.tex.grain;
-    if (old) {
-      try {
-        this.app.renderer.render(this.app.stage);
-      } catch {
-        /* tests may not have a live GPU */
-      }
-      const drop = (): void => old.destroy();
-      if (typeof requestAnimationFrame === "function") requestAnimationFrame(drop);
-      else drop();
-    }
+    if (old) this.retired.push(old);
   }
   /** Drop every sprite that still holds an atlas texture before the sources are destroyed. */
   private releaseAtlasSprites(): void {
