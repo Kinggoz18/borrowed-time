@@ -178,9 +178,9 @@ export class GameUI {
             "button",
             { class: "chip charter", "data-hud": "charter", onclick: () => this.openCharter() },
             icon("star"),
-            h("span", {}, `${nx.name}:`),
+            h("span", {}, nx.name),
             req(g.level, `Lv ${st.L}/${nx.lvl}`),
-            req(g.people, `${st.pop}/${nx.pop}`, "ppl"),
+            req(g.people, `${st.pop}/${nx.pop}`, "people"),
             !g.kept ? req(false, "Over limit") : !g.seal ? req(false, "Seal") : null,
           )
         : h("div", { class: "chip charter" }, icon("star"), h("span", {}, `${TIERS[st.tier].name}`)),
@@ -196,7 +196,10 @@ export class GameUI {
       switch (ev.kind) {
         case "built":
           this.cue("build", "medium");
-          if (!B[ev.type].glob) this.d.view.puff(ev.key);
+          if (!B[ev.type].glob) {
+            this.d.view.puff(ev.key);
+            this.d.view.reveal(ev.key);
+          }
           if (this.coach === "palisade" && ev.type === "palisade") this.setCoach("field");
           else if (this.coach === "field" && ev.type === "field") this.setCoach(null);
           break;
@@ -407,29 +410,38 @@ export class GameUI {
     };
     const amounts = [...new Set([5, 10, Math.max(1, Math.floor(room / 2)), room].filter((x) => x > 0 && x <= room))].sort((a, b) => a - b).slice(0, 4);
     const body: Child[] = [
-      h("p", { class: "quote" }, "“Tomorrow's light, lent today.”"),
+      // two columns in landscape: the ledger, then borrow and repay (no scrolling to the actions)
       h(
         "div",
-        { class: "ledger" },
-        h("div", {}, icon(st.debt ? "owed" : "safe"), h("b", {}, st.debt ? `You owe ${st.debt}` : "You owe nothing"), h("span", {}, `Limit ${lim}`)),
-        h("div", { class: "meter", role: "img", "aria-label": `${Math.round((st.debt / lim) * 100)}% of the limit` }, h("i", { style: `width:${Math.min(100, (st.debt / lim) * 100)}%` })),
-        h("p", { class: "sub" }, `Interest ${pct}% a night. Go over the limit at night and Hesper takes a building.`),
-        E.greyCount(st) > 0 && h("p", { class: "tag grey" }, icon("owed"), `${E.greyCount(st)} lots are grey: they work at half until you repay.`),
+        { class: "col" },
+        h("p", { class: "quote" }, "“Tomorrow's light, lent today.”"),
+        h(
+          "div",
+          { class: "ledger" },
+          h("div", {}, icon(st.debt ? "owed" : "safe"), h("b", {}, st.debt ? `You owe ${st.debt}` : "You owe nothing"), h("span", {}, `Limit ${lim}`)),
+          h("div", { class: "meter", role: "img", "aria-label": `${Math.round((st.debt / lim) * 100)}% of the limit` }, h("i", { style: `width:${Math.min(100, (st.debt / lim) * 100)}%` })),
+          h("p", { class: "sub" }, `Interest ${pct}% a night. Go over the limit at night and Hesper takes a building.`),
+          E.greyCount(st) > 0 && h("p", { class: "tag grey" }, icon("owed"), `${E.greyCount(st)} lots are grey: they work at half until you repay.`),
+        ),
       ),
-      h("h3", {}, "Borrow"),
-      amounts.length
-        ? h("div", { class: "grid2" }, ...amounts.map((x) => h("button", { class: "btn opt", "data-act": `borrow-${x}`, onclick: () => (s.do({ t: "borrow", x }) ? this.openClockkeeper() : this.cue("deny")) }, h("b", {}, `+${x} Hours`), h("small", {}, preview(x)))))
-        : h("p", { class: "sub" }, "No more credit today."),
-      h("h3", {}, "Repay"),
-      st.debt > 0
-        ? h(
-            "div",
-            { class: "grid2" },
-            ...[...new Set([5, 20, st.debt].filter((x) => x <= st.debt))].map((x) =>
-              h("button", { class: "btn opt", disabled: st.hours < 1, "data-act": `repay-${x === st.debt ? "all" : x}`, onclick: () => (s.do({ t: "repay", x }) ? this.openClockkeeper() : this.cue("deny")) }, h("b", {}, x === st.debt ? "Repay all" : `Repay ${x}`), h("small", {}, `${Math.min(x, Math.floor(st.hours))} Hours now`)),
-            ),
-          )
-        : h("p", { class: "sub" }, "Nothing to repay."),
+      h(
+        "div",
+        { class: "col" },
+        h("h3", {}, "Borrow"),
+        amounts.length
+          ? h("div", { class: "grid2" }, ...amounts.map((x) => h("button", { class: "btn opt", "data-act": `borrow-${x}`, onclick: () => (s.do({ t: "borrow", x }) ? this.openClockkeeper() : this.cue("deny")) }, h("b", {}, `+${x} Hours`), h("small", {}, preview(x)))))
+          : h("p", { class: "sub" }, "No more credit today."),
+        h("h3", {}, "Repay"),
+        st.debt > 0
+          ? h(
+              "div",
+              { class: "grid2" },
+              ...[...new Set([5, 20, st.debt].filter((x) => x <= st.debt))].map((x) =>
+                h("button", { class: "btn opt", disabled: st.hours < 1, "data-act": `repay-${x === st.debt ? "all" : x}`, onclick: () => (s.do({ t: "repay", x }) ? this.openClockkeeper() : this.cue("deny")) }, h("b", {}, x === st.debt ? "Repay all" : `Repay ${x}`), h("small", {}, `${Math.min(x, Math.floor(st.hours))} Hours now`)),
+              ),
+            )
+          : h("p", { class: "sub" }, "Nothing to repay."),
+      ),
     ];
     const el = this.sheet("Hesper, the Clockkeeper", body, "keeper");
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "keeper";

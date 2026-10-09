@@ -226,8 +226,20 @@ export class IslandView {
     const { width, height } = this.app.screen;
     return { x: 0, y: HUD_TOP, w: Math.max(1, width - RAIL_RIGHT), h: Math.max(1, height - HUD_TOP) };
   }
+  private glide: { x: number; y: number } | null = null;
+  /** Glide the camera to a lot if it is off screen or under the HUD/rail (a new building is always seen). */
+  reveal(key: string): void {
+    const p = this.lotToScreen(key);
+    const a = this.area();
+    const m = 48;
+    if (p.x > a.x + m && p.x < a.x + a.w - m && p.y > a.y + m && p.y < a.y + a.h - m) return;
+    const [i, j] = kij(key);
+    const f = cellFront(i, j);
+    this.glide = { x: f.x, y: f.y - TH / 2 };
+  }
   /** Centre the camera on a lot (used by tests and to frame the next thing to do). */
   showLot(key: string): void {
+    this.glide = null;
     const [i, j] = kij(key);
     const p = cellFront(i, j);
     this.cx = p.x;
@@ -343,6 +355,13 @@ export class IslandView {
   }
   private update(dt: number): void {
     dt = Math.min(dt, 0.1);
+    if (this.glide && !this.dragFrom) {
+      const k = Math.min(1, dt * 6);
+      this.cx += (this.glide.x - this.cx) * k;
+      this.cy += (this.glide.y - this.cy) * k;
+      if (Math.hypot(this.glide.x - this.cx, this.glide.y - this.cy) < 0.5) this.glide = null;
+      this.apply();
+    }
     for (const tw of this.tweens.slice()) {
       tw.t += dt;
       const u = Math.min(1, tw.t / tw.dur);
