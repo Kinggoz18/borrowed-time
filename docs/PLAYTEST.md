@@ -1,6 +1,13 @@
 # Phase 1 playtest (on the phone, held sideways)
 
-Install with `npm run apk:play` (README). Play from a fresh install. For each item note pass/fail and one line on how it felt.
+## Build and install the APK (Mac)
+1. Install Node 22+ (`brew install node`) and Android Studio; open Android Studio once so it downloads the Android SDK.
+2. Phone: Settings → About phone → tap *Build number* 7 times → Developer options → *USB debugging* on. Plug in by USB and accept the prompt.
+3. In the repo: `npm ci`, then `npm run apk:play`. It builds the game, runs `cap sync android` and Gradle, writes `borrowed-time-play.apk`, and installs it with `adb` if the phone is connected. No cable: send the APK to the phone and open it (allow installing unknown apps).
+4. `npm run apk:gate` builds the Phase 0 stress-scene APK the same way; perf/stress testing is paused, so skip it for now.
+
+## Checklist
+Play from a fresh install, phone held sideways (the app is landscape only). For each item note pass/fail and one line on how it felt.
 
 1. **First minute:** the home screen, then "We're starving. Borrow 10 Hours?" Borrow. The light bar grows and the debt chip says Owed with an hourglass icon and the word.
 2. **Coach:** Build pulses; the tip says Palisade, then Field. Build both. The ring of stakes appears, the field lands on a lot, the camera stays close enough to see them.
