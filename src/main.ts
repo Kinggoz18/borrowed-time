@@ -3,12 +3,12 @@ import { Application } from "pixi.js";
 import { PerfRun } from "./perf/runner";
 import { AutoDrop, detectTier, lowerTier, probeDevice, TIERS } from "./perf/quality";
 import type { Mode, Scenario, Tier } from "./render/config";
-import { StressScene } from "./render/scene";
+import { StressScene, type FrameInfo } from "./render/scene";
 import { CommandLog } from "./sim/commands";
 
 declare global {
   interface Window {
-    __bt?: { ready: boolean; startupMs: number; frames: number; scene?: StressScene; run?: PerfRun; error?: string };
+    __bt?: { ready: boolean; startupMs: number; frames: number; scene?: StressScene; run?: PerfRun; last?: FrameInfo; error?: string };
   }
 }
 
@@ -64,6 +64,7 @@ async function boot(): Promise<void> {
     const now = performance.now();
     const info = scene.update((now - last) / 1000);
     const updateMs = performance.now() - now;
+    state.last = info;
     if (state.ready) {
       const rows = run.recorder.rows.length;
       run.frame(now - last, updateMs, info);
