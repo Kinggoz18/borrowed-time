@@ -6,7 +6,7 @@
 import * as E from "../core/engine";
 import type { GameEvent } from "../core/game";
 import { duskHint } from "../core/hints";
-import { B, COUNT, EVENTS, LOT_TYPES, TIERS, type BType } from "../core/rules";
+import { B, COUNT, EVENTS, LOT_TYPES, TIERS, xpNeed, type BType } from "../core/rules";
 import { cloneState } from "../core/snapshot";
 import type { IslandState } from "../core/state";
 import { lookFor } from "../render/island/layout";
@@ -16,8 +16,10 @@ import { FAST, Session } from "../game/session";
 import { saveSettings, type Settings } from "../game/settings";
 import type { KV } from "../platform/storage";
 import type { Cue, Haptics, Sfx } from "../platform/sfx";
+import { applyOrientation } from "../platform/orientation";
 import { BAND_WORD, BLURB, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
 import { h, icon, type Child } from "./dom";
+import { runIntro } from "./intro";
 
 export interface UiDeps {
   view: IslandView;
@@ -53,6 +55,7 @@ export class GameUI {
   private hudCache = "";
   private off: (() => void) | null = null;
   private inDusk = false;
+  private hoursChip: HTMLElement | null = null;
 
   constructor(
     host: HTMLElement,
@@ -114,15 +117,18 @@ export class GameUI {
       h("button", { class: "btn tab", "data-act": "keeper", onclick: () => this.openClockkeeper() }, icon("tent"), h("span", {}, "Hesper")),
       h("button", { class: "btn tab", "data-act": "rest", "aria-pressed": "false", onclick: (e) => this.toggleRest(e.currentTarget as HTMLElement) }, icon("fast"), h("span", {}, "Rest 8×")),
     );
-    const gear = h("button", { class: "btn icon-btn gear", "aria-label": "Settings", "data-act": "settings", onclick: () => this.showSettings("play") }, icon("gear"));
-    const kids: Child[] = [this.hud, gear, this.toasts, bar, this.layer];
+    const pauseBtn = h("button", { class: "btn icon-btn pause-btn", "aria-label": "Pause", "data-act": "pause", onclick: () => this.openPause() }, icon("pause"));
+    const kids: Child[] = [this.hud, pauseBtn, this.toasts, bar, this.layer];
     if (this.d.dev) kids.push(h("button", { class: "btn icon-btn debug", "aria-label": "Debug", "data-act": "debug", onclick: () => this.openDebug() }, icon("bug")));
     this.root.replaceChildren(...kids.filter((k): k is HTMLElement => !!k));
     this.hudCache = "";
     this.d.view.setLots(s.state);
     this.d.view.sync(s.state, { dusk: s.state.phase !== "day" });
     this.updateHud();
-    if (!s.meta.introDone) void this.firstRun();
+    void this.bindNativePause();
+    this.syncPlayInsets();
+    if (!s.meta.storyDone) void this.runStory();
+    else if (!s.meta.introDone) void this.firstRun();
     else if (s.state.phase === "dusk") void this.dusk();
     else if (s.state.phase === "night") void this.sleep();
     else this.seasonToast();
@@ -136,15 +142,27 @@ export class GameUI {
     this.cue("tap", "light");
   }
 
+  private syncPlayInsets(): void {
+    const hud = this.hud?.getBoundingClientRect();
+    const bar = this.root.querySelector<HTMLElement>(".bar")?.getBoundingClientRect();
+    const top = hud ? hud.bottom : 64;
+    const right = bar ? this.appW() - bar.left : 104;
+    this.d.view.setPlayInsets(top, right);
+  }
+  private appW(): number {
+    return window.innerWidth;
+  }
+
   /** Called every frame. Text only changes when the numbers do. */
   updateHud(): void {
     const s = this.session;
     if (!s || this.screen !== "play") return;
+    this.syncPlayInsets();
     const st = s.state;
     const lim = E.limit(st);
     const left = Math.max(0, st.dayLen - st.hour);
     const g = E.growthNeeds(st);
-    const sig = [Math.floor(st.hours), st.debt, lim, st.day, st.season, left, st.pop, st.L, st.tier, st.phase, g.seal].join("|");
+    const sig = [Math.floor(st.hours), st.debt, lim, st.day, st.season, left, st.pop, st.L, st.tier, st.phase, g.seal, s.meta.colonyName].join("|");
     if (sig === this.hudCache) {
       this.hud.style.setProperty("--light", String(1 - s.dayProgress()));
       return;
@@ -154,6 +172,12 @@ export class GameUI {
     const near = owed && st.debt >= 0.8 * lim;
     const nx = TIERS[st.tier + 1];
     this.hud.replaceChildren(
+      h(
+        "button",
+        { class: "colony-badge", "data-act": "profile", onclick: () => this.openProfile(), title: s.meta.colonyName },
+        h("span", { class: "level-ring", "aria-hidden": "true", style: `--xp: ${Math.min(1, st.xp / Math.max(1, xpNeed(st.L)))}` }),
+        h("span", { class: "colony-text" }, h("b", {}, s.meta.colonyName), h("small", {}, `${TIERS[st.tier].name} · Lv ${st.L}`)),
+      ),
       h("div", { class: "chip hours", "data-hud": "hours", title: "Hours" }, icon("hours"), h("b", {}, fmt(st.hours)), h("small", {}, "Hours")),
       h(
         "button",
@@ -192,7 +216,33 @@ export class GameUI {
           )
         : h("div", { class: "chip charter" }, icon("star"), h("span", {}, `${TIERS[st.tier].name}`)),
     );
+    this.hoursChip = this.hud.querySelector(".chip.hours");
     this.hud.style.setProperty("--light", String(1 - s.dayProgress()));
+  }
+
+  private floatIncome(n: number): void {
+    if (n <= 0 || !this.hoursChip) return;
+    const el = h("span", { class: "income-float" }, `+${n < 1 ? n.toFixed(1) : Math.round(n)}`);
+    this.hoursChip.appendChild(el);
+    requestAnimationFrame(() => el.classList.add("on"));
+    setTimeout(() => el.remove(), 1200);
+    this.hoursChip.classList.remove("pop");
+    void this.hoursChip.offsetWidth;
+    this.hoursChip.classList.add("pop");
+  }
+
+  private animateHoursTo(target: number): void {
+    const chip = this.hoursChip?.querySelector("b");
+    if (!chip) return;
+    const from = parseFloat(chip.textContent?.replace("k", "") ?? "0") * (chip.textContent?.includes("k") ? 1000 : 1);
+    const t0 = performance.now();
+    const step = (): void => {
+      const u = Math.min(1, (performance.now() - t0) / 400);
+      const v = from + (target - from) * u;
+      chip.textContent = fmt(v);
+      if (u < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
   private onEvents(evs: GameEvent[]): void {
@@ -228,9 +278,18 @@ export class GameUI {
           this.cue("levelUp", "medium");
           this.toast(`Level ${ev.to}`, "good");
           break;
+        case "hourTick":
+          this.floatIncome(ev.gain);
+          this.animateHoursTo(st.hours);
+          break;
         case "dusk":
           resync = false;
           void this.dusk();
+          break;
+        case "raid":
+        case "night":
+        case "seized":
+          resync = false;
           break;
       }
     }
@@ -268,10 +327,60 @@ export class GameUI {
     if (c) this.root.appendChild(h("div", { class: "coach-tip", role: "status" }, c === "palisade" ? LINES.coachPalisade : LINES.coachField));
   }
 
+  private bindNativePause(): void {
+    void import("@capacitor/core").then(({ Capacitor }) => {
+      if (!Capacitor.isNativePlatform()) return;
+      void import("@capacitor/app").then(({ App }) => {
+        App.addListener("backButton", () => {
+          if (this.cardOpen) return;
+          if (this.sheetOpen) this.closeSheet();
+          else if (this.screen === "play") this.openPause();
+        });
+        App.addListener("appStateChange", ({ isActive }) => {
+          if (!this.session || this.screen !== "play") return;
+          if (!isActive) this.setPaused(true);
+          else if (!this.sheetOpen && !this.cardOpen) this.setPaused(false);
+        });
+      });
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden" && this.session && this.screen === "play") this.setPaused(true);
+    });
+  }
+
+  private setPaused(on: boolean): void {
+    if (!this.session) return;
+    this.session.paused = on;
+    this.d.view.frozen = on;
+  }
+
+  private async runStory(): Promise<void> {
+    const s = this.session!;
+    this.setPaused(true);
+    await new Promise<void>((done) => {
+      runIntro(
+        this.root,
+        () => {
+          s.meta.storyDone = true;
+          void s.save();
+          this.setPaused(false);
+          done();
+        },
+        (line) => {
+          const lay = this.d.view.playLayout;
+          if (line === 0) this.d.view.showLot("0,0");
+          else if (line === 4 && lay) this.d.view.focusWorld(lay.tent.x, lay.tent.y - 20);
+          else if (line === 5) this.d.view.fit(false);
+        },
+      );
+    });
+    if (!s.meta.introDone) void this.firstRun();
+  }
+
   // ---------- first run ----------
   private async firstRun(): Promise<void> {
     const s = this.session!;
-    s.paused = true;
+    this.setPaused(true);
     const a = await this.card({
       cls: "hesper",
       title: LINES.introTitle,
@@ -283,7 +392,7 @@ export class GameUI {
     if (a === "borrow") s.do({ t: "borrow", x: 10 });
     s.meta.introDone = true;
     void s.save();
-    s.paused = false;
+    this.setPaused(false);
     this.setCoach("palisade");
     setTimeout(() => this.seasonToast(), 600);
   }
@@ -292,7 +401,7 @@ export class GameUI {
   private sheet(title: string, body: Child[], cls = ""): HTMLElement {
     this.closeSheet();
     this.sheetOpen = true;
-    if (this.session) this.session.paused = true;
+    if (this.session) this.setPaused(true);
     const close = h("button", { class: "btn icon-btn", "aria-label": "Close", "data-act": "close", onclick: () => this.closeSheet() }, icon("close"));
     const el = h("div", { class: "sheet-wrap", onclick: (e) => e.target === e.currentTarget && this.closeSheet() }, h("section", { class: `sheet ${cls}`, role: "dialog", "aria-label": title }, h("header", {}, h("h2", {}, title), close), h("div", { class: "sheet-body" }, ...body)));
     this.layer.appendChild(el);
@@ -303,19 +412,21 @@ export class GameUI {
     this.sheetOpen = false;
     this.selected = null;
     this.d.view.highlight(null);
-    if (this.session && !this.cardOpen) this.session.paused = false;
+    if (this.session && !this.cardOpen) this.setPaused(false);
   }
   private refreshSheet(): void {
     const open = this.layer.querySelector<HTMLElement>(".sheet")?.dataset.kind;
     if (open === "build") this.openBuild(this.selected ?? undefined);
     else if (open === "keeper") this.openClockkeeper();
     else if (open === "lot" && this.selected) this.openLot(this.selected);
+    else if (open === "glob" && this.selected) this.openGlob(this.selected as "pal" | "road");
   }
 
   private tapLot(key: string): void {
     const s = this.session;
     if (!s || this.cardOpen || s.state.phase !== "day") return;
     const st = s.state;
+    if (key === "pal" || key === "road") return this.openGlob(key);
     if (key === "0,0") return this.toast("The gnomon. It was here before us, keeping the island's time.");
     if (!(key in st.lots)) return;
     this.cue("tap", "light");
@@ -341,13 +452,18 @@ export class GameUI {
       const locked = (b.tier ?? 0) > st.tier;
       const have = b.glob ? (st[b.glob] ? 1 : 0) : E.countOf(st, t);
       const max = COUNT[t][st.tier];
-      const ok = !locked && E.canBuild(st, b.glob ? undefined : lot ?? safest(st), t);
-      const why = locked ? `Opens at ${TIERS[b.tier!].name}` : have >= max ? (b.one ? "Built" : `${have}/${max} built`) : b.credit ? (st.debt + c > E.limit(st) ? "Not enough credit" : "") : st.hours < c ? `Need ${Math.ceil(c - st.hours)} more Hours` : !b.glob && !lot && !safest(st) ? "No free lot" : "";
+      const builtGlob = b.glob && st[b.glob];
+      const ok = !locked && !builtGlob && E.canBuild(st, b.glob ? undefined : lot ?? safest(st), t);
+      const why = locked ? `Opens at ${TIERS[b.tier!].name}` : builtGlob ? "Tap the ring or Roads in Build to upgrade" : have >= max ? (b.one ? "Built" : `${have}/${max} built`) : b.credit ? (st.debt + c > E.limit(st) ? "Not enough credit" : "") : st.hours < c ? `Need ${Math.ceil(c - st.hours)} more Hours` : !b.glob && !lot && !safest(st) ? "No free lot" : "";
       const era = this.d.view.currentEra as "colony" | "village";
       const frame = t === "palisade" ? `ring/0/segA` : t === "road" ? `g/${era}/road/0` : buildingFrame(era, lookFor(era, t, 0).frameType, 0);
       return h(
         "div",
-        { class: "row" + (ok ? "" : " off") + (this.coach === t ? " coach" : ""), "data-build": t },
+        {
+          class: "row" + (ok ? "" : " off") + (this.coach === t ? " coach" : "") + (builtGlob ? " built-glob" : ""),
+          "data-build": t,
+          onclick: builtGlob ? () => this.openGlob(b.glob as "pal" | "road") : undefined,
+        },
         h("img", { class: "thumb", src: this.d.view.thumb(frame), alt: "" }),
         h("div", { class: "row-text" }, h("b", {}, b.name), h("span", {}, BLURB[t] ?? ""), why && h("em", {}, why)),
         h(
@@ -367,6 +483,31 @@ export class GameUI {
     const evs = s.do({ t: "build", type: t, key: B[t].glob ? undefined : key });
     if (!evs) return this.cue("deny");
     this.closeSheet();
+  }
+
+  openGlob(g: "pal" | "road"): void {
+    const s = this.session!;
+    const st = s.state;
+    if (st.phase !== "day") return;
+    const type = g === "pal" ? "palisade" : "road";
+    const b = E.bAt(st, g);
+    if (!b) return;
+    this.selected = g;
+    this.d.view.highlight(null);
+    const def = B[type];
+    const c = E.cost(type, b.n + 1, st.L);
+    const cap = E.tierCap(st);
+    const ok = E.canUpgrade(st, g);
+    const era = this.d.view.currentEra as "colony" | "village";
+    const frame = g === "pal" ? `ring/0/segA` : `g/${era}/road/0`;
+    const body: Child[] = [
+      h("div", { class: "lot-head" }, h("img", { class: "thumb big", src: this.d.view.thumb(frame), alt: "" }), h("div", {}, h("b", {}, `Level ${b.n}`), h("span", {}, BLURB[type] ?? ""))),
+      b.n >= cap
+        ? h("p", { class: "sub" }, `Level ${cap} is the most a ${TIERS[st.tier].name} can build.`)
+        : h("button", { class: "btn big primary", disabled: !ok, "data-act": "upgrade", onclick: () => this.doUpgrade(g) }, icon("star"), `Upgrade · ${c} Hours`),
+    ];
+    const el = this.sheet(def.name, body);
+    el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "glob";
   }
 
   openLot(key: string): void {
@@ -402,7 +543,8 @@ export class GameUI {
   }
   private doUpgrade(key: string): void {
     if (!this.session!.do({ t: "upgrade", key })) return this.cue("deny");
-    this.openLot(key);
+    if (key === "pal" || key === "road") this.openGlob(key);
+    else this.openLot(key);
   }
 
   openClockkeeper(): void {
@@ -482,10 +624,12 @@ export class GameUI {
   card(o: { title: string; body?: Child[] | string[]; buttons: { id: string; label: string; kind?: "primary" | "danger"; icon?: Parameters<typeof icon>[0]; note?: string; disabled?: boolean }[]; cls?: string; art?: string; ask?: string; kicker?: string }): Promise<string> {
     return new Promise((resolve) => {
       this.cardOpen = true;
+      if (this.session) this.setPaused(true);
       const wrap = h("div", { class: "card-wrap" });
       const done = (id: string) => {
         wrap.remove();
         this.cardOpen = !!this.root.querySelector(".card-wrap");
+        if (this.session && !this.cardOpen && !this.sheetOpen) this.setPaused(false);
         this.cue("tap", "light");
         resolve(id);
       };
@@ -517,7 +661,7 @@ export class GameUI {
     if (this.inDusk) return;
     this.inDusk = true;
     this.closeSheet();
-    s.paused = true;
+    this.setPaused(true);
     s.speed = 1;
     const rest = this.root.querySelector('[data-act="rest"]');
     rest?.classList.remove("on");
@@ -539,7 +683,11 @@ export class GameUI {
         cls: "dusk",
         kicker: `${KIND_TITLE[hint.kind]} · ${BAND_WORD[hint.band!]}`,
         title: hint.line,
-        body: [h("p", { class: "sub" }, icon("shield"), ` Your defence now: ${D}. They never show their numbers.`), hint.range ? h("p", { class: "sub" }, `Ada counts ${hint.range[0]}–${hint.range[1]}.`) : null],
+        body: [
+          h("p", { class: "dusk-lead" }, `${KIND_TITLE[hint.kind]} tonight. ${BAND_WORD[hint.band!]} raid.`),
+          h("p", { class: "sub dusk-stat" }, icon("shield"), `Your defence: ${D}. Raiders never show their numbers.`),
+          hint.range ? h("p", { class: "sub hint-clue" }, `Ada counts ${hint.range[0]}–${hint.range[1]}. A clue, not a promise.`) : null,
+        ],
         buttons: [
           { id: "hold", label: "Hold", note: `Defence ${D}. Keep your Hours.`, icon: "shield" },
           { id: "walls", label: "Everyone to the walls", note: `Defence ${Dw}. No morning bonus. More hurt if they break in.`, icon: "people" },
@@ -553,14 +701,15 @@ export class GameUI {
     } else {
       await this.card({ cls: "dusk quiet", kicker: KIND_TITLE.quiet, title: hint.line, body: ["Nobody's coming tonight."], buttons: [{ id: "sleep", label: "Sleep", kind: "primary", icon: "moon" }] });
     }
+    const preRaid = cloneState(s.state);
     const evs = s.do({ t: "dusk", decision }) ?? [];
     const raid = evs.find((e) => e.kind === "raid");
     this.d.view.setLight(1, true);
     if (raid && raid.kind === "raid" && !("quiet" in raid.result && raid.result.quiet)) {
       const r = raid.result as E.RaidResult;
+      this.d.view.sync(preRaid, { dusk: true });
       this.once("raid", LINES.firstRaid);
       await this.d.view.playRaid(r);
-      this.d.view.sync(s.state, { dusk: true });
       this.updateHud();
       this.cue(r.won ? "held" : "lost", r.won ? "medium" : "heavy");
       const lines: Child[] = [];
@@ -579,6 +728,7 @@ export class GameUI {
         lines.push(h("p", { class: "sub" }, "Knocked-down levels rebuild at half price."));
       }
       await this.card({ cls: r.won ? "held" : "lost", kicker: r.boss ? "The Long Dusk" : "Tonight", title: r.won ? (r.D - r.S < r.S * 0.08 ? "In the nick of time!" : "Held!") : "They broke through.", body: lines, buttons: [{ id: "sleep", label: "Sleep", kind: "primary", icon: "moon" }] });
+      this.d.view.sync(s.state, { dusk: true });
     }
     await this.sleep();
     this.inDusk = false;
@@ -588,10 +738,12 @@ export class GameUI {
     const s = this.session!;
     if (s.state.phase !== "night") return;
     // seizure plays on the building before the island re-lays
+    const preNight = cloneState(s.state);
     const evs = s.do({ t: "night" }) ?? [];
     const night = evs.find((e) => e.kind === "night");
     const seized = evs.find((e) => e.kind === "seized");
     if (seized && seized.kind === "seized") {
+      this.d.view.sync(preNight, { dusk: true });
       this.cue("seize", "heavy");
       await this.d.view.playSeizure(seized.seizure.k);
       this.d.view.sync(s.state, { dusk: true });
@@ -627,8 +779,61 @@ export class GameUI {
     this.d.view.setLots(s.state);
     this.d.view.sync(s.state);
     this.updateHud();
-    s.paused = false;
+    this.setPaused(false);
     this.seasonToast();
+  }
+
+  openPause(): void {
+    const body: Child[] = [
+      h("button", { class: "btn big primary", "data-act": "resume", onclick: () => this.closeSheet() }, icon("play"), "Resume"),
+      h("button", { class: "btn big", "data-act": "profile", onclick: () => this.openProfile() }, icon("people"), "Profile"),
+      h("button", { class: "btn big", "data-act": "journal", onclick: () => this.openJournal() }, icon("journal"), "Journal"),
+      h("button", { class: "btn big", "data-act": "settings", onclick: () => { this.closeSheet(); this.showSettings("play"); } }, icon("gear"), "Settings"),
+      h("button", { class: "btn big", "data-act": "home", onclick: () => { this.closeSheet(); this.d.onHome?.(); } }, icon("home"), "Home"),
+    ];
+    const el = this.sheet("Paused", body, "pause");
+    el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "pause";
+  }
+
+  openProfile(): void {
+    const s = this.session!;
+    const st = s.state;
+    const stats = st.stats;
+    const body: Child[] = [
+      h("p", { class: "sub" }, `${TIERS[st.tier].name} · Level ${st.L}`),
+      h("ul", { class: "report" }, h("li", {}, icon("people"), `${st.pop} people · food ${Math.floor(E.food(st))} · homes ${E.popRoom(st)}`)),
+      h("ul", { class: "report" }, h("li", {}, icon("build"), `${E.blds(st).length} buildings on the island`)),
+      h("p", { class: "sub" }, `Season ${st.season} · Day ${st.day}`),
+      h("h3", {}, "Ledger"),
+      h("ul", { class: "report" },
+        h("li", {}, `Borrowed ${stats.borrowed} · repaid ${stats.repaid}`),
+        h("li", {}, `Raids won ${stats.raidsWon} · lost ${stats.raidsLost}`),
+        h("li", {}, `Buildings seized ${stats.seized} · level-ups ${stats.levelUps}`),
+      ),
+    ];
+    const el = this.sheet(s.meta.colonyName, body, "profile");
+    el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "profile";
+  }
+
+  openJournal(): void {
+    const s = this.session!;
+    const lines = s.data.events
+      .slice(-24)
+      .reverse()
+      .map((ev) => {
+        if (ev.kind === "raid" && ev.result && !ev.result.quiet) return ev.result.won ? `Night ${ev.day}: we held the wall.` : `Night ${ev.day}: they broke through.`;
+        if (ev.kind === "seized") return `Hesper took a ${ev.seizure.type} on day ${ev.day}.`;
+        if (ev.kind === "tierUp") return `The island became ${TIERS[ev.tier].name}.`;
+        if (ev.kind === "built") return `We raised a ${B[ev.type].name}.`;
+        return null;
+      })
+      .filter((x): x is string => !!x);
+    const body: Child[] = [
+      h("button", { class: "btn", "data-act": "replay-intro", onclick: () => { this.closeSheet(); void this.runStory(); } }, "Replay the arrival story"),
+      lines.length ? h("ul", { class: "report journal" }, ...lines.map((t) => h("li", {}, t))) : h("p", { class: "sub" }, "The ledger is still mostly blank."),
+    ];
+    const el = this.sheet("Journal", body, "journal");
+    el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "journal";
   }
 
   // ---------- settings ----------
@@ -638,7 +843,7 @@ export class GameUI {
       if (from === "home") this.d.onHome?.();
       else {
         this.root.querySelector(".settings")?.remove();
-        if (this.session && !this.cardOpen && !this.sheetOpen) this.session.paused = false;
+        if (this.session && !this.cardOpen && !this.sheetOpen) this.setPaused(false);
       }
     };
     const toggle = (key: "sound" | "haptics", label: string, ic: Parameters<typeof icon>[0]) =>
@@ -649,7 +854,7 @@ export class GameUI {
         void saveSettings(this.d.kv, st);
         this.cue("tap", "light");
       } }));
-    if (this.session) this.session.paused = true;
+    if (this.session) this.setPaused(true);
     const panel = h(
       "section",
       { class: "settings", "data-screen": "settings", role: "dialog", "aria-label": "Settings" },
@@ -664,8 +869,19 @@ export class GameUI {
         h("select", { "data-set": "quality", onchange: (e) => {
           st.quality = (e.target as HTMLSelectElement).value as Settings["quality"];
           void saveSettings(this.d.kv, st);
-          this.d.onQuality(st.quality);
         } }, ...(["auto", "high", "mid", "low"] as const).map((q) => h("option", { value: q, selected: st.quality === q }, q === "auto" ? "Automatic" : q[0].toUpperCase() + q.slice(1)))),
+      ),
+      h("p", { class: "note" }, "Picture quality applies next time you open the game."),
+      h(
+        "label",
+        { class: "setting" },
+        icon("rotate"),
+        h("span", {}, "Screen"),
+        h("select", { "data-set": "orientation", onchange: (e) => {
+          st.orientation = (e.target as HTMLSelectElement).value as Settings["orientation"];
+          void saveSettings(this.d.kv, st);
+          void applyOrientation(st.orientation);
+        } }, ...(["landscape", "portrait", "auto"] as const).map((o) => h("option", { value: o, selected: st.orientation === o }, o === "auto" ? "Auto" : o[0].toUpperCase() + o.slice(1)))),
       ),
       this.session && h("button", { class: "btn big danger", "data-act": "reset", onclick: async () => {
         const a = await this.card({ title: "Reset the island?", body: ["This deletes your colony for good."], buttons: [{ id: "yes", label: "Delete my colony", kind: "danger" }, { id: "no", label: "Keep it" }] });

@@ -35,7 +35,8 @@ export default defineConfig({
   ],
   projects: [
     // The game is played in landscape. A typical 20:9 Android phone held sideways: 800x360 CSS px at DPR 2.
-    { name: "phone-800", use: { ...devices["Desktop Chrome"], viewport: { width: 800, height: 360 }, deviceScaleFactor: 2 } },
-    { name: "phone-960", use: { ...devices["Desktop Chrome"], viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 } },
+    { name: "phone-800", grepInvert: /portrait setting/, use: { ...devices["Desktop Chrome"], viewport: { width: 800, height: 360 }, deviceScaleFactor: 2 } },
+    { name: "phone-960", grepInvert: /portrait setting/, use: { ...devices["Desktop Chrome"], viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 } },
+    { name: "phone-portrait", grep: /portrait setting/, use: { ...devices["Desktop Chrome"], viewport: { width: 360, height: 800 }, deviceScaleFactor: 2 } },
   ],
 });

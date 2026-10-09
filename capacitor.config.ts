@@ -8,6 +8,11 @@ const config: CapacitorConfig = {
   // Landscape only: locked in android/app/src/main/AndroidManifest.xml (screenOrientation="sensorLandscape").
   android: { allowMixedContent: false },
   plugins: {
+    SystemBars: {
+      hidden: true,
+      insetsHandling: "css",
+      initialViewportFitValueHint: "cover",
+    },
     SplashScreen: {
       // The scene hides the splash itself once it is ready (startup is measured to that point).
       launchAutoHide: false,
