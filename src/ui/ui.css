@@ -1,4 +1,9 @@
 /* Paper and ink (ART_BIBLE.md §2, §4). Tap targets ≥ 48 px; meaning always has an icon and a word. */
+@font-face { font-family: "Alegreya"; src: url("/fonts/Alegreya-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Alegreya"; src: url("/fonts/Alegreya-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Alegreya Sans"; src: url("/fonts/AlegreyaSans-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Alegreya Sans"; src: url("/fonts/AlegreyaSans-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+
 :root {
   --ink: #3d3428;
   --ink-dim: #6b5d4a;
@@ -12,8 +17,12 @@
   --safe-bg: #dcebc9;
   --gold: #d9a441;
   --hesper: #b8633f;
-  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --serif: "Alegreya", "Iowan Old Style", Palatino, Georgia, serif;
+  --sans: "Alegreya Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
 }
 #ui { position: fixed; inset: 0; pointer-events: none; font-family: var(--sans); color: var(--ink); font-size: 16px; -webkit-tap-highlight-color: transparent; user-select: none; }
 #ui .btn, #ui .chip, .home, .settings, .sheet-wrap, .card-wrap { pointer-events: auto; }
@@ -43,7 +52,17 @@ button { font: inherit; color: inherit; }
 .note { text-align: center; color: var(--paper); font-size: 13px; text-shadow: 0 1px 2px var(--ink); }
 
 /* HUD: landscape. One strip along the top, the action rail on the right (thumb side). */
-.hud { position: absolute; top: 0; left: 0; right: 64px; padding: max(8px, env(safe-area-inset-top)) 8px 0 max(8px, env(safe-area-inset-left)); display: flex; gap: 6px; align-items: flex-start; pointer-events: none; }
+.hud { position: absolute; top: 0; left: 0; right: 112px; padding: max(8px, var(--safe-top)) 56px 0 max(8px, var(--safe-left)); display: flex; gap: 6px; align-items: flex-start; pointer-events: none; flex-wrap: wrap; max-height: 76px; overflow: hidden; }
+.colony-badge { pointer-events: auto; display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 4px 10px 4px 4px; border: 2.5px solid var(--ink); border-radius: 14px; background: var(--paper); box-shadow: 0 2px 0 var(--ink); cursor: pointer; text-align: left; }
+.colony-badge .colony-text { display: grid; gap: 0; }
+.colony-badge b { font-size: 15px; line-height: 1.1; }
+.colony-badge small { font-size: 12px; color: var(--ink-dim); }
+.level-ring { width: 40px; height: 40px; border-radius: 50%; background: conic-gradient(var(--gold) calc(var(--xp, 0) * 360deg), #d8cdb8 0); flex: none; }
+.chip.hours { position: relative; overflow: visible; }
+.chip.hours.pop { animation: hour-pop 0.35s ease-out; }
+@keyframes hour-pop { 0% { transform: scale(1); } 40% { transform: scale(1.1); } 70% { transform: scale(0.95); } 100% { transform: scale(1); } }
+.income-float { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); font-size: 14px; font-weight: 700; color: var(--safe); opacity: 0; transition: opacity 0.2s, transform 0.8s; pointer-events: none; }
+.income-float.on { opacity: 1; transform: translate(-50%, -18px); }
 .hud-row { display: flex; gap: 6px; align-items: stretch; }
 .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 48px; padding: 4px 10px; border: 2.5px solid var(--ink); border-radius: 12px; background: var(--paper); box-shadow: 0 2px 0 var(--ink); flex: none; }
 .chip b { font-size: 19px; font-variant-numeric: tabular-nums; }
@@ -58,16 +77,17 @@ button { font: inherit; color: inherit; }
 .hud-row.day { align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--paper); text-shadow: 0 1px 2px var(--ink), 0 0 1px var(--ink); padding: 0 4px; white-space: nowrap; }
 .lightbar { display: block; height: 8px; margin: 0 4px; border: 2px solid var(--ink); border-radius: 6px; background: rgba(61,52,40,0.4); overflow: hidden; }
 .lightbar i { display: block; height: 100%; width: calc(var(--light, 1) * 100%); background: var(--gold); }
-.chip.charter { margin-left: auto; min-width: 0; flex: 0 1 auto; font-size: 14px; cursor: pointer; white-space: nowrap; gap: 8px; overflow: hidden; }
+.chip.charter { margin-left: auto; min-width: 0; flex: 0 1 120px; font-size: 13px; cursor: pointer; white-space: nowrap; gap: 6px; overflow: hidden; text-overflow: ellipsis; }
 .req { display: inline-flex; align-items: center; gap: 2px; font-weight: 600; color: var(--debt); }
 .req.ok { color: var(--safe); }
 .req .ico { width: 16px; height: 16px; }
-.gear { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); }
+.pause-btn { position: absolute; top: max(8px, var(--safe-top)); right: max(8px, var(--safe-right)); z-index: 2; }
+#ui:has(.sheet-wrap) .pause-btn, #ui:has(.card-wrap) .pause-btn { visibility: hidden; pointer-events: none; }
 .debug { position: absolute; bottom: 8px; left: max(8px, env(safe-area-inset-left)); background: #ddd5f0; }
 @keyframes pulse { 50% { box-shadow: 0 2px 0 var(--ink), 0 0 0 4px rgba(164,83,47,0.35); } }
 
 /* action rail (right edge) */
-.bar { position: absolute; right: max(8px, env(safe-area-inset-right)); top: calc(max(8px, env(safe-area-inset-top)) + 60px); width: 88px; display: grid; gap: 8px; pointer-events: none; }
+.bar { position: absolute; right: max(8px, var(--safe-right)); top: calc(max(8px, var(--safe-top)) + 80px); width: 88px; display: grid; gap: 8px; pointer-events: none; }
 .tab { flex-direction: column; gap: 2px; min-height: 60px; font-size: 14px; padding: 4px; }
 .tab.on { background: var(--gold); }
 .tab.coach { animation: coach 1s ease-in-out infinite; }
@@ -131,13 +151,21 @@ button { font: inherit; color: inherit; }
 .card p.sub { flex-wrap: nowrap; }
 .card p { margin: 0; font-size: 16px; line-height: 1.35; display: flex; gap: 6px; align-items: flex-start; }
 .card p.quote { display: block; }
-.card .kicker { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-dim); font-weight: 700; }
+.card .kicker { font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink); font-weight: 800; }
+.card h2 { font-size: 26px; line-height: 1.2; color: var(--ink); }
 .card .ask { font-family: var(--serif); font-size: 22px; font-weight: 700; }
+.dusk-lead { font-size: 18px; font-weight: 700; line-height: 1.35; margin: 4px 0 8px; }
+.dusk-stat { font-size: 17px; font-weight: 600; }
+.hint-clue { font-size: 16px; opacity: 0.92; }
 .card-art { width: 110px; height: 156px; object-fit: contain; }
 .card-actions { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 10px; margin-top: 6px; }
 .card-actions .btn.big { height: 100%; }
 .card.dusk { background: linear-gradient(180deg, #f0c9a2, var(--paper) 45%); }
 .card.dusk h2 { font-style: italic; }
+.dusk-read { display: grid; gap: 4px; margin: 4px 0 8px; }
+.dusk-bar { position: relative; height: 14px; border: 2px solid var(--ink); border-radius: 8px; background: var(--paper-2); overflow: hidden; }
+.dusk-bar .raid { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, #8a6a4a, #8a6a4a 5px, #6e5340 5px, #6e5340 8px); opacity: 0.85; }
+.dusk-bar .mark { position: absolute; top: -2px; bottom: -2px; width: 3px; margin-left: -2px; background: var(--safe); box-shadow: 0 0 0 1px var(--ink); }
 .card.held { border-color: var(--safe); }
 .card.lost { border-color: var(--debt); }
 .card .good { color: var(--safe); font-weight: 600; }
@@ -159,15 +187,38 @@ button { font: inherit; color: inherit; }
 .setting input[type="checkbox"]:checked { background: var(--gold); }
 .setting input[type="checkbox"]:checked::after { left: 27px; }
 .setting select { min-height: 48px; font: inherit; border: 2.5px solid var(--ink); border-radius: 10px; background: var(--paper); padding: 0 10px; color: var(--ink); }
+.setting.vol input[type="range"] { width: 148px; height: 32px; accent-color: var(--gold); cursor: pointer; }
 .settings .note { color: var(--ink-dim); text-shadow: none; }
 #boot { position: fixed; inset: 0; display: grid; place-items: center; color: var(--paper); font-family: var(--serif); font-size: 22px; }
 
-/* portrait note (the app is locked to landscape on Android; a browser held upright sees this) */
+/* portrait note when the player chose landscape-only on web */
 .rotate { display: none; }
 @media (orientation: portrait) {
-  .rotate { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--paper); color: var(--ink); font: 600 20px var(--sans); text-align: center; padding: 24px; }
-  .rotate .ico { width: 64px; height: 64px; }
+  html[data-orient="landscape"] .rotate, html:not([data-orient]) .rotate {
+    position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--paper); color: var(--ink); font: 600 20px var(--sans); text-align: center; padding: 24px;
+  }
+  html[data-orient="landscape"] .rotate .ico, html:not([data-orient]) .rotate .ico { width: 64px; height: 64px; }
+  html[data-orient="portrait"] .hud, html[data-orient="auto"] .hud { right: 8px; max-width: 100%; }
+  html[data-orient="portrait"] .bar, html[data-orient="auto"] .bar {
+    left: max(8px, var(--safe-left)); right: max(8px, var(--safe-right)); top: auto; bottom: max(8px, var(--safe-bottom));
+    width: auto; grid-auto-flow: column; grid-template-columns: repeat(3, 1fr);
+  }
+  html[data-orient="portrait"] .pause-btn, html[data-orient="auto"] .pause-btn { top: max(8px, var(--safe-top)); }
+  html[data-orient="portrait"] .sheet, html[data-orient="auto"] .sheet { width: 100%; border-left: none; border-radius: 18px 18px 0 0; padding-bottom: var(--safe-bottom); }
+  html[data-orient="portrait"] .sheet-wrap, html[data-orient="auto"] .sheet-wrap { align-items: flex-end; }
 }
+
+.intro { position: fixed; inset: 0; z-index: 20; background: rgba(42,36,32,0.72); display: flex; flex-direction: column; justify-content: flex-end; padding: max(12px, var(--safe-top)) max(12px, var(--safe-right)) max(16px, var(--safe-bottom)) max(12px, var(--safe-left)); pointer-events: auto; }
+.intro-skip { position: absolute; top: max(12px, var(--safe-top)); right: max(12px, var(--safe-right)); z-index: 2; }
+.intro-body { background: var(--paper); border: 3px solid var(--ink); border-radius: 16px; padding: 16px; max-width: 520px; margin: 0 auto; width: 100%; min-height: 140px; }
+.intro-plate { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.intro-plate.right { flex-direction: row-reverse; text-align: right; }
+.intro-portrait { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; border: 2px solid var(--ink); background: #2a2420; }
+.intro-portrait[src*="noon"] { filter: brightness(0); }
+.intro-name { font-family: var(--serif); font-weight: 700; font-size: 18px; }
+.intro-text { font-size: 17px; line-height: 1.45; margin: 0; min-height: 3.2em; }
+.row.built-glob { cursor: pointer; }
+.sheet.pause .btn.big.primary { justify-content: center; }
 
 /* Hesper's sheet: wide, two columns, so borrow and repay are visible without scrolling */
 .sheet.keeper { width: min(700px, 86%); }

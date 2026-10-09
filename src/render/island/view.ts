@@ -3,26 +3,33 @@
  * the boot-time atlas with plain sprites (one batch per atlas page). Reads IslandState; never
  * changes it. Animations are presentation only: the rules already resolved before they play.
  */
-import { Application, Container, Graphics, Sprite, TilingSprite, type FederatedPointerEvent } from "pixi.js";
+import { Application, Container, Graphics, Particle, ParticleContainer, Sprite, TilingSprite, type FederatedPointerEvent } from "pixi.js";
 import type { RaidResult } from "../../core/engine";
 import { kij } from "../../core/rules";
 import type { IslandState } from "../../core/state";
 import { buildAtlas, type IslandAtlas } from "../../art/island/atlas";
-import type { Job } from "../../art/island/scenery";
+import { personFrameName, type Job, type PersonAnim, type PersonView } from "../../art/island/people";
 import type { TierConfig } from "../config";
-import { cellAt, cellFront, eraOf, layoutIsland, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
+import { BATTLE_RESOLVED_EVENT, battleTimeline, boatCount, prefersReducedMotion, raiderCount } from "./battle";
+import { cellAt, cellFront, eraOf, layoutIsland, lotCornerKeys, radius, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
+import { pickAt } from "./pick";
 import { toTextures, type IslandTextures } from "./textures";
+import { assignWalkers, blockedLots, facingOf, lotCentre, pathWorld, roadLots, route } from "./walkers";
 
 interface Walker {
   sp: Sprite;
   job: Job;
+  home: string;
+  work: string;
+  path: { x: number; y: number }[];
+  pi: number;
   x: number;
   y: number;
-  tx: number;
-  ty: number;
   speed: number;
   wait: number;
   phase: number;
+  mode: "toWork" | "work" | "idle" | "toHome" | "fadeOut" | "gone" | "fadeIn";
+  view: PersonView;
 }
 interface Tween {
   t: number;
@@ -31,12 +38,11 @@ interface Tween {
   done?: () => void;
 }
 
-const JOB_OF: Record<string, Job> = { field: "field", cottage: "field", workshop: "clockworks", tower: "watch", bank: "trade", trade: "trade", lantern: "clockworks" };
-const sleep = (view: IslandView, s: number) => new Promise<void>((res) => view.tween(s, () => undefined, res));
+const isWatch = (job: Job) => job === "watch" || job === "nell";
 
-/** Landscape screen furniture (ui.css): the HUD strip on top and the button rail on the right. */
-const HUD_TOP = 64;
-const RAIL_RIGHT = 104;
+/** Play-area insets (CSS px); updated from the DOM HUD and rail each frame. */
+let hudTop = 64;
+let railRight = 104;
 /** Gameplay camera starts this much closer than "whole island fits" (owner: too far out). */
 export const PLAY_ZOOM = 1.6;
 
@@ -52,6 +58,8 @@ export class IslandView {
   private shadow = new Graphics();
   private tex!: IslandTextures;
   private atlas!: IslandAtlas;
+  /** Previous era atlases kept alive so Pixi can drop GPU bind groups without a warning. */
+  private retired: IslandTextures[] = [];
   private thumbs = new Map<string, string>();
   private era = "";
   private layout!: IslandLayout;
@@ -59,6 +67,16 @@ export class IslandView {
   private walkers: Walker[] = [];
   private tweens: Tween[] = [];
   private boats: Sprite[] = [];
+  private boatBase = new Map<Sprite, number>();
+  private foamBits: { sp: Sprite; bx: number; by: number; ph: number }[] = [];
+  private flags: { sp: Sprite; ph: number }[] = [];
+  private smoke = new ParticleContainer({ dynamicProperties: { position: true, color: true, scale: true } });
+  private puffs: { p: Particle; life: number; max: number; vy: number }[] = [];
+  private hearths: { x: number; y: number }[] = [];
+  private emitT = 0;
+  private clock = 0;
+  private wasNight = false;
+  private lastSt: IslandState | null = null;
   private zoom = 1;
   private fitZoom = 1;
   private cx = 0;
@@ -70,12 +88,16 @@ export class IslandView {
   private night = false;
   onTapLot: (key: string) => void = () => undefined;
   onTapTent: () => void = () => undefined;
+  /** Fired once the clash outcome is on screen, before damage or seizure visuals. */
+  onBattleResolved: ((res: RaidResult) => void) | null = null;
 
   constructor(
     private app: Application,
     private cfg: TierConfig,
   ) {
     this.objects.sortableChildren = true;
+    this.smoke.zIndex = 80;
+    this.objects.addChild(this.smoke);
     this.world.addChild(this.sea, this.ground, this.shadow, this.select, this.objects);
     app.stage.addChild(this.world, this.overlay);
     app.stage.eventMode = "static";
@@ -93,7 +115,8 @@ export class IslandView {
   private ensureAtlas(st: IslandState): void {
     const era = eraOf(st.tier);
     if (era === this.era) return;
-    this.tex?.destroy();
+    this.releaseAtlasSprites();
+    const old = this.tex;
     const s = this.cfg.atlas === "low" ? 1 : 2;
     this.atlas = buildAtlas(era, s);
     this.thumbs.clear();
@@ -105,17 +128,33 @@ export class IslandView {
       this.grain.eventMode = "none";
       this.overlay.addChild(this.grain, this.wash);
     } else this.grain.texture = this.tex.grain;
+    if (old) this.retired.push(old);
+  }
+  /** Drop every sprite that still holds an atlas texture before the sources are destroyed. */
+  private releaseAtlasSprites(): void {
+    this.clearFx();
+    if (this.era) {
+      this.smoke.removeFromParent();
+      this.smoke.destroy();
+      this.smoke = new ParticleContainer({ dynamicProperties: { position: true, color: true, scale: true } });
+      this.smoke.zIndex = 80;
+      this.objects.addChild(this.smoke);
+    }
     for (const w of this.walkers) w.sp.destroy();
     this.walkers = [];
     for (const b of this.boats) b.destroy();
     this.boats = [];
+    this.boatBase.clear();
+    this.foamBits = [];
     for (const s of this.sprites.values()) s.destroy();
     this.sprites.clear();
     this.ground.removeChildren().forEach((c) => c.destroy());
+    this.sea.removeChildren().forEach((c) => c.destroy());
   }
 
   /** Re-lays the island for the state. Cheap enough to call after every command. */
   sync(st: IslandState, opts: { dusk?: boolean } = {}): void {
+    this.lastState = st;
     this.ensureAtlas(st);
     const prevR = this.layout?.r;
     this.layout = layoutIsland(st, opts);
@@ -150,6 +189,7 @@ export class IslandView {
         this.sprites.delete(id);
       }
     this.syncWalkers(st);
+    this.syncFx();
     if (prevR !== this.layout.r) this.fit(true);
   }
 
@@ -163,37 +203,65 @@ export class IslandView {
 
   private drawSea(): void {
     this.sea.removeChildren().forEach((c) => c.destroy());
+    this.foamBits = [];
     const b = this.layout.bounds;
     for (let n = 0; n < 14; n++) {
       const f = new Sprite(this.tex.get("fx/foam"));
       const a = (n / 14) * Math.PI * 2;
-      f.position.set(b.x + b.w / 2 + Math.cos(a) * b.w * 0.55, b.y + b.h / 2 + Math.sin(a) * b.h * 0.55);
+      const bx = b.x + b.w / 2 + Math.cos(a) * b.w * 0.55, by = b.y + b.h / 2 + Math.sin(a) * b.h * 0.55;
+      f.position.set(bx, by);
       f.alpha = 0.7;
       this.sea.addChild(f);
+      this.foamBits.push({ sp: f, bx, by, ph: a });
     }
   }
 
   private syncWalkers(st: IslandState): void {
-    const want = visibleFigures(st.pop, this.cfg.villagers);
-    const jobs: Job[] = [];
-    for (const b of Object.values(st.lots)) if (b) jobs.push(JOB_OF[b.type] ?? "trade");
-    if (!jobs.length) jobs.push("field");
-    while (this.walkers.length > want) this.walkers.pop()!.sp.destroy();
-    while (this.walkers.length < want) {
-      const job = jobs[this.walkers.length % jobs.length];
-      const sp = new Sprite(this.tex.get(`p/${job}/0`));
-      const p = this.randomSpot();
+    this.lastSt = st;
+    const plans = assignWalkers(st, visibleFigures(st.pop, this.cfg.villagers));
+    while (this.walkers.length > plans.length) this.walkers.pop()!.sp.destroy();
+    while (this.walkers.length < plans.length) {
+      const plan = plans[this.walkers.length];
+      const p = lotCentre(plan.home);
+      const sp = new Sprite(this.personTex(plan.job, "idle", "se", 0));
       sp.position.set(p.x, p.y);
       this.objects.addChild(sp);
-      this.walkers.push({ sp, job, x: p.x, y: p.y, tx: p.x, ty: p.y, speed: 14 + Math.random() * 8, wait: Math.random() * 2, phase: Math.random() });
+      this.walkers.push({
+        sp, job: plan.job, home: plan.home, work: plan.work, path: [], pi: 0,
+        x: p.x, y: p.y, speed: 16 + Math.random() * 8, wait: 0, phase: Math.random(),
+        mode: this.night ? (isWatch(plan.job) ? "idle" : "gone") : "toWork", view: "se",
+      });
+    }
+    for (let i = 0; i < this.walkers.length; i++) {
+      const w = this.walkers[i], plan = plans[i];
+      const moved = w.home !== plan.home || w.work !== plan.work || w.job !== plan.job;
+      w.job = plan.job;
+      w.home = plan.home;
+      w.work = plan.work;
+      if (moved && (w.mode === "toWork" || w.mode === "toHome" || w.mode === "idle")) this.beginWalk(w, w.mode === "toHome" ? w.home : w.work);
     }
   }
 
-  private randomSpot(): { x: number; y: number } {
-    const r = this.layout.r;
-    const i = (Math.random() * 2 - 1) * (r + 0.5), j = (Math.random() * 2 - 1) * (r + 0.5);
-    const p = cellFront(i, j);
-    return { x: p.x, y: p.y - TH / 2 };
+  private personTex(job: Job, anim: PersonAnim, view: PersonView, frame: number) {
+    const name = personFrameName(job, anim, view, frame);
+    return this.tex.has(name) ? this.tex.get(name) : this.tex.get(`p/${job}/${frame % 2}`);
+  }
+
+  private beginWalk(w: Walker, dest: string): void {
+    if (!this.lastSt) return;
+    const from = this.nearLot(w);
+    const allow = new Set([w.home, w.work, dest]);
+    const lots = route(from, dest, blockedLots(this.lastSt, allow), roadLots(this.lastSt), radius(this.lastSt.tier));
+    w.path = pathWorld(lots);
+    w.pi = 0;
+    w.mode = dest === w.home ? "toHome" : "toWork";
+    w.wait = 0;
+  }
+
+  private nearLot(w: Walker): string {
+    const c = cellAt(w.x, w.y + TH / 2);
+    const k = `${c.i},${c.j}`;
+    return this.lastSt && k in this.lastSt.lots ? k : w.home;
   }
 
   /** 0 = dawn, 1 = dusk; night darkens further. */
@@ -222,9 +290,14 @@ export class IslandView {
     this.apply();
   }
   /** The part of the screen the island owns: below the top HUD, left of the button rail. */
+  /** Match the real HUD and action-rail rects from the DOM (safe-area aware). */
+  setPlayInsets(top: number, right: number): void {
+    hudTop = top;
+    railRight = right;
+  }
   private area(): { x: number; y: number; w: number; h: number } {
     const { width, height } = this.app.screen;
-    return { x: 0, y: HUD_TOP, w: Math.max(1, width - RAIL_RIGHT), h: Math.max(1, height - HUD_TOP) };
+    return { x: 0, y: hudTop, w: Math.max(1, width - railRight), h: Math.max(1, height - hudTop) };
   }
   private glide: { x: number; y: number } | null = null;
   /** Glide the camera to a lot if it is off screen or under the HUD/rail (a new building is always seen). */
@@ -245,6 +318,14 @@ export class IslandView {
     const want = (this.app.screen.width - cover) / 2;
     this.glide = { x: f.x - (want - (a.x + a.w / 2)) / this.zoom, y: f.y - TH / 2 };
   }
+  get playLayout(): IslandLayout | null {
+    return this.layout;
+  }
+
+  focusWorld(x: number, y: number): void {
+    this.glide = { x, y };
+  }
+
   /** Centre the camera on a lot (used by tests and to frame the next thing to do). */
   showLot(key: string): void {
     this.glide = null;
@@ -314,13 +395,13 @@ export class IslandView {
   }
   /** World → cell under a screen point. */
   pick(sx: number, sy: number): string | null {
-    const wx = (sx - this.world.x) / this.zoom, wy = (sy - this.world.y) / this.zoom;
-    const t = this.layout.tent;
-    if (Math.abs(wx - t.x) < TW * 0.6 && wy < t.y + 4 && wy > t.y - 70) return "tent";
-    const c = cellAt(wx, wy);
-    const key = `${c.i},${c.j}`;
-    return key;
+    const wx = (sx - this.world.x) / this.zoom;
+    const wy = (sy - this.world.y) / this.zoom;
+    if (!this.layout || !this.lastState) return null;
+    const r = pickAt(wx, wy, this.lastState, this.layout);
+    return r;
   }
+  private lastState: IslandState | null = null;
   tap(sx: number, sy: number): void {
     const key = this.pick(sx, sy);
     if (key === "tent") return this.onTapTent();
@@ -342,17 +423,35 @@ export class IslandView {
     this.apply();
   }
   highlight(key: string | null): void {
-    this.select.clear();
-    if (!key || !(key in (this.lastLots ?? {}))) return;
-    const [i, j] = kij(key);
-    const f = cellFront(i, j);
-    this.select
-      .poly([f.x, f.y - TH, f.x + TW / 2, f.y - TH / 2, f.x, f.y, f.x - TW / 2, f.y - TH / 2])
-      .stroke({ width: 3, color: 0xd9a441, alpha: 1 });
+    this.selectedKey = key;
+    this.paintSelect();
   }
+  /** Corner ticks on empty lots while the Build sheet is open (UI may call this). */
+  setBuildOpen(open: boolean): void {
+    this.buildOpen = open;
+    this.paintSelect();
+  }
+  private selectedKey: string | null = null;
+  private buildOpen = false;
   private lastLots: Record<string, unknown> | null = null;
   setLots(st: IslandState): void {
     this.lastLots = st.lots;
+    this.paintSelect();
+  }
+  private paintSelect(): void {
+    this.select.clear();
+    const lots = this.lastLots;
+    const key = this.selectedKey;
+    if (!lots) return;
+    for (const k of lotCornerKeys(lots, key, this.buildOpen)) {
+      const [i, j] = kij(k);
+      paintLotCorners(this.select, cellFront(i, j), k === key);
+    }
+    if (key && key in lots) {
+      const [i, j] = kij(key);
+      const f = cellFront(i, j);
+      this.select.poly([f.x, f.y - TH, f.x + TW / 2, f.y - TH / 2, f.x, f.y, f.x - TW / 2, f.y - TH / 2]).stroke({ width: 3, color: 0xd9a441, alpha: 1 });
+    }
   }
 
   // ---------- animation ----------
@@ -362,17 +461,10 @@ export class IslandView {
   get busy(): boolean {
     return this.tweens.length > 0;
   }
+  frozen = false;
   private update(dt: number): void {
     dt = Math.min(dt, 0.1);
-    if (this.glide && !this.dragFrom) {
-      const k = Math.min(1, dt * 6);
-      const px = this.cx, py = this.cy;
-      this.cx += (this.glide.x - this.cx) * k;
-      this.cy += (this.glide.y - this.cy) * k;
-      this.apply();
-      // arrived, or held at the island's edge
-      if (Math.hypot(this.glide.x - this.cx, this.glide.y - this.cy) < 0.5 || Math.hypot(this.cx - px, this.cy - py) < 0.05) this.glide = null;
-    }
+    // tweens keep running while paused so dusk battle and seizure can play
     for (const tw of this.tweens.slice()) {
       tw.t += dt;
       const u = Math.min(1, tw.t / tw.dur);
@@ -382,33 +474,19 @@ export class IslandView {
         tw.done?.();
       }
     }
-    for (const w of this.walkers) {
-      if (this.night) {
-        w.sp.visible = false;
-        continue;
-      }
-      w.sp.visible = true;
-      if (w.wait > 0) {
-        w.wait -= dt;
-        continue;
-      }
-      const dx = w.tx - w.x, dy = w.ty - w.y, d = Math.hypot(dx, dy);
-      if (d < 1) {
-        const p = this.randomSpot();
-        w.tx = p.x;
-        w.ty = p.y;
-        w.wait = 0.5 + Math.random() * 2.5;
-        continue;
-      }
-      const k = Math.min(1, (w.speed * dt) / d);
-      w.x += dx * k;
-      w.y += dy * k;
-      w.phase += dt * 4;
-      w.sp.texture = this.tex.get(`p/${w.job}/${Math.floor(w.phase) % 2}`);
-      w.sp.scale.x = dx < 0 ? -1 : 1;
-      w.sp.position.set(w.x, w.y);
-      w.sp.zIndex = Math.round(((w.y - TH) / (TH / 2)) * 100) + 50;
+    if (this.frozen) return;
+    if (this.glide && !this.dragFrom) {
+      const k = Math.min(1, dt * 6);
+      const px = this.cx, py = this.cy;
+      this.cx += (this.glide.x - this.cx) * k;
+      this.cy += (this.glide.y - this.cy) * k;
+      this.apply();
+      // arrived, or held at the island's edge
+      if (Math.hypot(this.glide.x - this.cx, this.glide.y - this.cy) < 0.5 || Math.hypot(this.cx - px, this.cy - py) < 0.05) this.glide = null;
     }
+    this.clock += dt;
+    this.stepWalkers(dt);
+    this.stepWorldFx(dt);
     // baked light, then a multiply-style tint over the day: warm dawn, white noon, amber dusk, blue night
     const u = this.light;
     const c = this.night ? 0x6f7fa6 : u < 0.15 ? mix(0xf3d9b8, 0xffffff, u / 0.15) : u < 0.75 ? 0xffffff : mix(0xffffff, 0xf0b58a, (u - 0.75) / 0.25);
@@ -424,6 +502,153 @@ export class IslandView {
         .stroke({ width: 4, color: 0x3d3428, alpha: 0.3, cap: "round" });
   }
 
+  private stepWalkers(dt: number): void {
+    const dusk = this.night || this.light > 0.88;
+    const dawn = !this.night && this.wasNight;
+    this.wasNight = this.night;
+    for (const w of this.walkers) {
+      if (dawn && !isWatch(w.job)) {
+        const p = lotCentre(w.home);
+        w.x = p.x;
+        w.y = p.y;
+        w.sp.alpha = 0;
+        w.sp.visible = true;
+        w.mode = "fadeIn";
+        w.path = [];
+      }
+      if (dusk && !isWatch(w.job) && w.mode !== "toHome" && w.mode !== "fadeOut" && w.mode !== "gone") this.beginWalk(w, w.home);
+      if (w.mode === "gone") {
+        w.sp.visible = false;
+        continue;
+      }
+      w.sp.visible = true;
+      if ((w.mode === "toWork" || w.mode === "toHome") && !w.path.length) this.beginWalk(w, w.mode === "toHome" ? w.home : w.work);
+      if (w.mode === "fadeIn") {
+        w.sp.alpha = Math.min(1, w.sp.alpha + dt / 0.4);
+        this.pose(w, "idle", dt, 2);
+        if (w.sp.alpha >= 1) this.beginWalk(w, w.work);
+      } else if (w.mode === "fadeOut") {
+        w.sp.alpha = Math.max(0, w.sp.alpha - dt / 0.4);
+        this.pose(w, "idle", dt, 2);
+        if (w.sp.alpha <= 0) {
+          w.mode = "gone";
+          w.sp.visible = false;
+        }
+      } else if (w.mode === "work") {
+        w.wait -= dt;
+        this.pose(w, "work", dt, 4);
+        if (w.wait <= 0) w.mode = "idle";
+      } else if (w.mode === "idle") this.pose(w, "idle", dt, 2);
+      else this.followPath(w, dt);
+      w.sp.position.set(w.x, w.y);
+      w.sp.zIndex = Math.round(((w.y - TH) / (TH / 2)) * 100) + 50;
+    }
+    for (const [id, sp] of this.sprites)
+      if (id.startsWith("p/hesper")) sp.texture = this.personTex("hesper", "idle", "se", Math.floor(this.clock * 2) % 2);
+  }
+  private pose(w: Walker, anim: PersonAnim, dt: number, fps: number): void {
+    w.phase += dt * fps;
+    w.sp.texture = this.personTex(w.job, anim, w.view, Math.floor(w.phase) % (anim === "walk" ? 4 : 2));
+    w.sp.scale.x = 1;
+  }
+  private followPath(w: Walker, dt: number): void {
+    if (!w.path.length || w.pi >= w.path.length) {
+      this.arrive(w);
+      return;
+    }
+    const t = w.path[Math.min(w.pi, w.path.length - 1)];
+    const dx = t.x - w.x, dy = t.y - w.y, d = Math.hypot(dx, dy);
+    if (d < 1.2) {
+      w.pi++;
+      if (w.pi >= w.path.length) {
+        this.arrive(w);
+        return;
+      }
+    } else {
+      const k = Math.min(1, (w.speed * dt) / d);
+      w.x += dx * k;
+      w.y += dy * k;
+      w.view = facingOf(dx, dy);
+    }
+    this.pose(w, "walk", dt, 8);
+  }
+  private arrive(w: Walker): void {
+    w.path = [];
+    if (w.mode === "toWork") {
+      w.mode = "work";
+      w.wait = 2 + Math.random() * 2;
+      const p = lotCentre(w.work);
+      w.x = p.x;
+      w.y = p.y;
+    } else if (w.mode === "toHome") {
+      const p = lotCentre(w.home);
+      w.x = p.x;
+      w.y = p.y;
+      w.mode = this.night || this.light > 0.88 ? "fadeOut" : "idle";
+    }
+  }
+  private clearFx(): void {
+    for (const f of this.flags) f.sp.destroy();
+    this.flags = [];
+    for (const s of this.puffs) this.smoke.removeParticle(s.p);
+    this.puffs = [];
+    this.hearths = [];
+  }
+  private syncFx(): void {
+    this.hearths = [];
+    for (const t of this.layout.things) if (t.frame.includes("/cottage/")) this.hearths.push({ x: t.x - 6, y: t.y - 30 });
+    for (const f of this.flags) f.sp.destroy();
+    this.flags = [];
+    if (!this.tex.has("fx/flag/0")) return;
+    for (const t of this.layout.things) {
+      if (!/\/tower\/|\/trade\/|\/lantern\/|^tent$/.test(t.frame.replace(/^grey\//, ""))) continue;
+      const sp = new Sprite(this.tex.get("fx/flag/0"));
+      const lift = t.frame.includes("tent") ? 40 : t.frame.includes("tower") ? 50 : 30;
+      sp.position.set(t.x + (t.frame.includes("trade") ? -12 : 6), t.y - lift);
+      sp.zIndex = t.z + 3;
+      this.objects.addChild(sp);
+      this.flags.push({ sp, ph: Math.random() * 3 });
+    }
+  }
+  private stepWorldFx(dt: number): void {
+    for (const f of this.foamBits) {
+      f.ph += dt * 0.45;
+      f.sp.position.set(f.bx + Math.sin(f.ph) * 7, f.by + Math.cos(f.ph * 0.8) * 3);
+    }
+    for (const b of this.boats) {
+      if (!this.boatBase.has(b)) this.boatBase.set(b, b.y);
+      b.y = this.boatBase.get(b)! + Math.sin(this.clock * 2.2 + b.x * 0.05) * 1.7;
+    }
+    for (const f of this.flags) {
+      f.ph += dt * 6;
+      const fr = `fx/flag/${Math.floor(f.ph) % 3}`;
+      if (this.tex.has(fr)) f.sp.texture = this.tex.get(fr);
+    }
+    this.emitT += dt;
+    if (this.emitT > 0.38 && this.tex.has("fx/smoke")) {
+      this.emitT = 0;
+      for (const h of this.hearths) {
+        if (this.puffs.length >= Math.min(40, this.cfg.particles)) break;
+        const tex = this.tex.has("fx/smoke/0") ? this.tex.get(`fx/smoke/${Math.floor(Math.random() * 3)}`) : this.tex.get("fx/smoke");
+        this.smoke.texture = tex;
+        const p = new Particle({ texture: tex, x: h.x, y: h.y, alpha: 0.85, scaleX: 0.65, scaleY: 0.65, anchorX: 0.5, anchorY: 0.8 });
+        this.smoke.addParticle(p);
+        this.puffs.push({ p, life: 0, max: 1.5 + Math.random() * 0.8, vy: 11 + Math.random() * 7 });
+      }
+    }
+    for (const s of this.puffs.slice()) {
+      s.life += dt;
+      s.p.y -= s.vy * dt;
+      s.p.x += Math.sin(s.life * 2.4) * 10 * dt;
+      s.p.alpha = Math.max(0, 1 - s.life / s.max);
+      s.p.scaleX = s.p.scaleY = 0.55 + s.life / s.max;
+      if (s.life >= s.max) {
+        this.smoke.removeParticle(s.p);
+        this.puffs.splice(this.puffs.indexOf(s), 1);
+      }
+    }
+  }
+
   /** A sprite on the island for an effect, depth-sorted with buildings. */
   private fx(frame: string, x: number, y: number, z = 100000): Sprite {
     const s = new Sprite(this.tex.get(frame));
@@ -436,47 +661,146 @@ export class IslandView {
   /** The raid, played back from the already-resolved result. Resolves when the playback ends. */
   async playRaid(res: RaidResult): Promise<void> {
     const g = this.layout.gate;
-    const n = Math.min(this.cfg.boats, res.boss ? 4 : 2);
+    const reduced = prefersReducedMotion();
+    const ghost = res.kind === "ghosts";
+    const n = boatCount(res.kind, res.boss, this.cfg.boats);
     const boats: Sprite[] = [];
     for (let k = 0; k < n; k++) {
-      const b = this.fx("boat", g.x + 260 + k * 30, g.y + 120 + k * 40, -1);
+      const b = this.fx("boat", g.x + 280 + k * 32, g.y + 130 + k * 36, -1);
+      b.alpha = ghost ? 0.45 : 1;
       this.sea.addChild(b);
       boats.push(b);
     }
-    await new Promise<void>((done) =>
-      this.tween(1.6, (u) => boats.forEach((b, k) => b.position.set(g.x + 260 - 170 * ease(u) + k * 30, g.y + 120 - 70 * ease(u) + k * 40)), done),
-    );
     const raiders: Sprite[] = [];
-    const m = Math.min(this.cfg.raiders, res.boss ? 10 : 5);
-    for (let k = 0; k < m; k++) raiders.push(this.fx("p/raider/0", g.x + 80 + (k % 4) * 10, g.y + 40 + Math.floor(k / 4) * 8));
-    await new Promise<void>((done) =>
-      this.tween(1.2, (u) => raiders.forEach((r, k) => {
-        r.position.set(g.x + 80 - 60 * u + (k % 4) * 10, g.y + 40 - 28 * u + Math.floor(k / 4) * 8);
-        r.texture = this.tex.get(`p/raider/${Math.floor(u * 8) % 2}`);
-        r.scale.x = -1;
-      }), done),
-    );
-    if (res.won) {
-      const sparks = raiders.slice(0, 3).map((r) => this.fx("fx/spark", r.x, r.y - 14));
-      await sleep(this, 0.4);
-      sparks.forEach((s) => s.destroy());
-      await new Promise<void>((done) => this.tween(1, (u) => raiders.forEach((r) => ((r.alpha = 1 - u), (r.x += 1.5), (r.scale.x = 1))), done));
-    } else {
-      const fires: Sprite[] = [];
-      for (const d of res.damaged.slice(0, 6)) {
-        const [i, j] = kij(d.k);
-        const p = cellFront(i, j);
-        fires.push(this.fx("fx/fire", p.x, p.y - 24), this.fx("fx/smoke", p.x + 4, p.y - 44));
-      }
-      await new Promise<void>((done) => this.tween(1.8, (u) => fires.forEach((f, k) => ((f.scale.y = 1 + 0.15 * Math.sin(u * 30 + k)), (f.alpha = u > 0.8 ? (1 - u) * 5 : 1))), done));
-      fires.forEach((f) => f.destroy());
-      await new Promise<void>((done) => this.tween(0.8, (u) => raiders.forEach((r) => (r.alpha = 1 - u)), done));
+    const m = raiderCount(res.kind, res.boss, this.cfg.raiders);
+    for (let k = 0; k < m; k++) {
+      const r = this.fx("p/raider/0", g.x + 90 + (k % 4) * 10, g.y + 48 + Math.floor(k / 4) * 8);
+      r.alpha = ghost ? 0.5 : 1;
+      raiders.push(r);
     }
-    raiders.forEach((r) => r.destroy());
-    await new Promise<void>((done) => this.tween(1.2, (u) => boats.forEach((b, k) => (k > 0 || !res.won ? (b.alpha = 1 - u) : (b.texture = this.tex.get("boat/beached")))), done));
-    boats.forEach((b, k) => (k > 0 || !res.won ? b.destroy() : this.boats.push(b)));
-    // keep at most a few beached boats as trophies
-    while (this.boats.length > 3) this.boats.shift()!.destroy();
+    const defenders: Sprite[] = [];
+    for (let k = 0; k < Math.min(4, Math.max(2, this.walkers.length)); k++) {
+      defenders.push(this.fx("p/watch/0", g.x - 70 + k * 14, g.y + 10, 80));
+    }
+    const ring: Sprite[] = [];
+    const towers: Sprite[] = [];
+    for (const [id, sp] of this.sprites) {
+      if (id.includes("ring/") || id.includes("gate/")) ring.push(sp);
+      if (id.includes("tower") || id.includes("watch")) towers.push(sp);
+    }
+    const towerY = towers.map((s) => s.y);
+    const ringX = ring.map((s) => s.x);
+    const wait = (dur: number, step: (u: number) => void) =>
+      dur <= 0 ? Promise.resolve(step(1)) : new Promise<void>((done) => this.tween(dur, step, done));
+
+    for (const beat of battleTimeline(res, reduced)) {
+      if (beat.phase === "approach") {
+        await wait(beat.dur, (u) => {
+          const e = ease(u);
+          boats.forEach((b, k) => b.position.set(g.x + 280 - 190 * e + k * 32, g.y + 130 - 80 * e + k * 36 + Math.sin(u * 8 + k) * 2));
+        });
+      } else if (beat.phase === "defend") {
+        await wait(beat.dur, (u) => {
+          ring.forEach((s) => (s.alpha = 0.75 + 0.25 * Math.sin(u * Math.PI * 4)));
+          towers.forEach((s, k) => (s.y = towerY[k]! + Math.sin(u * Math.PI * 2 + k) * 2));
+          defenders.forEach((d, k) => {
+            d.x = g.x - 70 + k * 14 + 24 * u;
+            d.y = g.y + 10 - 18 * u;
+            d.texture = this.personTex("watch", "walk", "se", Math.floor(u * 6) % 4);
+            d.scale.x = 1;
+          });
+        });
+        ring.forEach((s) => (s.alpha = 1));
+        towers.forEach((s, k) => (s.y = towerY[k]!));
+      } else if (beat.phase === "clash") {
+        const sparks: Sprite[] = [];
+        await wait(beat.dur, (u) => {
+          raiders.forEach((r, k) => {
+            r.position.set(g.x + 90 - 70 * u + (k % 4) * 10, g.y + 48 - 32 * u + Math.floor(k / 4) * 8);
+            r.texture = this.personTex("raider", "walk", "nw", Math.floor(u * 10) % 4);
+            r.scale.x = 1;
+          });
+          if (sparks.length < 3 && u > 0.2) {
+            const t = towers[sparks.length] ?? defenders[sparks.length];
+            const target = raiders[sparks.length % raiders.length];
+            if (t && target) sparks.push(this.fx("fx/spark", t.x, t.y - 20));
+          }
+          sparks.forEach((s, k) => {
+            const target = raiders[k % Math.max(1, raiders.length)];
+            if (!target) return;
+            s.x += (target.x - s.x) * 0.2;
+            s.y += (target.y - 12 - s.y) * 0.2;
+            s.alpha = 0.4 + 0.6 * Math.sin(u * 30 + k);
+          });
+        });
+        sparks.forEach((s) => s.destroy());
+      } else if (beat.phase === "outcome") {
+        if (res.won) {
+          const sparks = raiders.slice(0, 3).map((r) => this.fx("fx/spark", r.x, r.y - 14));
+          await wait(beat.dur, (u) => {
+            raiders.forEach((r) => {
+              r.x += 1.2;
+              r.alpha = 1 - u;
+              r.scale.x = 1;
+            });
+            sparks.forEach((s) => (s.alpha = 1 - u));
+          });
+          sparks.forEach((s) => s.destroy());
+        } else {
+          await wait(beat.dur, (u) => {
+            raiders.forEach((r, k) => {
+              r.x -= 0.4;
+              r.y -= 0.2;
+              r.texture = this.personTex("raider", "walk", "nw", Math.floor(u * 8 + k) % 4);
+            });
+            ring.forEach((s, k) => (s.x = ringX[k]! + Math.sin(u * 40) * 2));
+            defenders.forEach((d) => (d.alpha = 1 - u * 0.5));
+          });
+          ring.forEach((s, k) => (s.x = ringX[k]!));
+        }
+      } else if (beat.phase === "resolved") {
+        this.emitBattleResolved(res);
+      } else if (beat.phase === "aftermath") {
+        if (!res.won) {
+          const fires: Sprite[] = [];
+          for (const dmg of res.damaged.slice(0, 6)) {
+            if (dmg.k === "pal") continue;
+            const [i, j] = kij(dmg.k);
+            const p = cellFront(i, j);
+            fires.push(this.fx("fx/fire", p.x, p.y - 24), this.fx("fx/smoke", p.x + 4, p.y - 44));
+          }
+          await wait(beat.dur, (u) => {
+            fires.forEach((f, k) => ((f.scale.y = 1 + 0.15 * Math.sin(u * 30 + k)), (f.alpha = u > 0.8 ? (1 - u) * 5 : 1)));
+            raiders.forEach((r) => (r.alpha = (ghost ? 0.5 : 1) * (1 - u)));
+          });
+          fires.forEach((f) => f.destroy());
+        } else await wait(Math.min(beat.dur, 0.4), () => undefined);
+        raiders.forEach((r) => r.destroy());
+        defenders.forEach((d) => d.destroy());
+        await wait(reduced ? 0.05 : 1.0, (u) => boats.forEach((b, k) => (k > 0 || !res.won ? (b.alpha = (ghost ? 0.45 : 1) * (1 - u)) : (b.texture = this.tex.get("boat/beached")))));
+        boats.forEach((b, k) => {
+          if (k > 0 || !res.won) b.destroy();
+          else {
+            this.boatBase.set(b, b.y);
+            this.boats.push(b);
+          }
+        });
+        while (this.boats.length > 3) {
+          const gone = this.boats.shift()!;
+          this.boatBase.delete(gone);
+          gone.destroy();
+        }
+      }
+    }
+  }
+
+  private emitBattleResolved(res: RaidResult): void {
+    this.onBattleResolved?.(res);
+    try {
+      dispatchEvent(new CustomEvent(BATTLE_RESOLVED_EVENT, { detail: { won: res.won, day: res.day, season: res.season, kind: res.kind, boss: res.boss } }));
+    } catch {
+      /* node tests have no window events */
+    }
   }
 
   /** Hesper's men lift the seized building away, gently. */
@@ -545,4 +869,24 @@ const ease = (u: number): number => 1 - (1 - u) * (1 - u);
 function mix(a: number, b: number, u: number): number {
   const ch = (s: number) => Math.round(((a >> s) & 255) + (((b >> s) & 255) - ((a >> s) & 255)) * u);
   return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+function toward(from: { x: number; y: number }, to: { x: number; y: number }, d: number): { x: number; y: number } {
+  const dx = to.x - from.x, dy = to.y - from.y, m = Math.hypot(dx, dy) || 1;
+  return { x: from.x + (dx / m) * d, y: from.y + (dy / m) * d };
+}
+function paintLotCorners(g: Graphics, f: { x: number; y: number }, selected: boolean): void {
+  const diamond = [
+    { x: f.x, y: f.y - TH },
+    { x: f.x + TW / 2, y: f.y - TH / 2 },
+    { x: f.x, y: f.y },
+    { x: f.x - TW / 2, y: f.y - TH / 2 },
+  ];
+  const len = 6;
+  for (let i = 0; i < 4; i++) {
+    const c = diamond[i];
+    const a = toward(c, diamond[(i + 3) % 4], len);
+    const b = toward(c, diamond[(i + 1) % 4], len);
+    g.moveTo(a.x, a.y).lineTo(c.x, c.y).lineTo(b.x, b.y);
+  }
+  g.stroke({ width: selected ? 2 : 1.4, color: selected ? 0xd9a441 : 0x3d3428, alpha: selected ? 0.95 : 0.55, cap: "round", join: "round" });
 }

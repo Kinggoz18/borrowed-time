@@ -1,6 +1,7 @@
 /** Turns the boot-time island atlas (Canvas 2D pages) into Pixi textures. */
 import { CanvasSource, Rectangle, Texture } from "pixi.js";
 import type { IslandAtlas } from "../../art/island/atlas";
+import { JOBS, personFrameName } from "../../art/island/people";
 
 export interface IslandTextures {
   get(name: string): Texture;
@@ -21,6 +22,12 @@ export function toTextures(atlas: IslandAtlas): IslandTextures {
     const t = new Texture({ source: sources[f.page], frame: new Rectangle(f.x / s, f.y / s, f.w / s, f.h / s), defaultAnchor: { x: f.ax, y: f.ay } });
     cache.set(name, t);
   }
+  for (const job of JOBS) {
+    const a = cache.get(personFrameName(job, "walk", "se", 0));
+    const b = cache.get(personFrameName(job, "walk", "se", 1));
+    if (a) cache.set(`p/${job}/0`, a);
+    if (b) cache.set(`p/${job}/1`, b);
+  }
   const grainSrc = new CanvasSource({ resource: atlas.grain, addressMode: "repeat" });
   const grain = new Texture({ source: grainSrc });
   return {
@@ -34,7 +41,8 @@ export function toTextures(atlas: IslandAtlas): IslandTextures {
     s,
     sources,
     destroy() {
-      for (const t of cache.values()) t.destroy(false);
+      const unique = new Set(cache.values());
+      for (const t of unique) t.destroy(false);
       for (const src of sources) src.destroy();
       grainSrc.destroy();
     },

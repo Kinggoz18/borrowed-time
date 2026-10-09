@@ -13,7 +13,19 @@ export const BLURB: Partial<Record<BType, string>> = {
   lantern: "Built on credit. Hours and homes.",
 };
 export const LOOK_NAMES = ["Rough", "Settled", "Timber", "Sturdy", "Stone", "Fine", "Grand"];
-export const KIND_TITLE = { quiet: "A quiet night", skiffs: "Skiffs tonight", longboats: "Longboats tonight", longDusk: "The Long Dusk" } as const;
+export const KIND_TITLE = {
+  quiet: "A quiet night",
+  skiffs: "Skiffs tonight",
+  longboats: "Longboats tonight",
+  ghosts: "Quiet boats tonight",
+  runners: "Fast skiffs tonight",
+  siege: "Siege boats tonight",
+  rams: "Rams tonight",
+  ironclads: "Iron hulls tonight",
+  meters: "Counting boats tonight",
+  longDusk: "The Long Dusk",
+} as const;
+export const HIDDEN_TITLE = "Something on the water";
 export const BAND_WORD = { light: "Light", even: "Even", heavy: "Heavy" } as const;
 
 export const LINES = {

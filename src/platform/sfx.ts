@@ -1,7 +1,11 @@
 /**
- * Sound hooks. Phase 1 plays tiny WebAudio-synthesised cues (no files) so every hook is audible
- * on the phone; Phase 2 swaps in recorded sounds behind the same names.
+ * Sound hooks. Cues are tiny Web Audio voices on the sfx bus (pitch/volume jitter, voice cap).
+ * Background music lives on a separate bus; see `music.ts`.
  */
+import { cueJitter, graph } from "./audio-graph";
+import { music, type Music } from "./music";
+import type { MusicScene } from "./score";
+
 export type Cue = "tap" | "build" | "upgrade" | "borrow" | "repay" | "coin" | "dusk" | "horn" | "held" | "lost" | "seize" | "tierUp" | "levelUp" | "deny";
 
 const NOTES: Record<Cue, { f: number[]; d: number; type: OscillatorType; gain: number }> = {
@@ -23,34 +27,84 @@ const NOTES: Record<Cue, { f: number[]; d: number; type: OscillatorType; gain: n
 
 export class Sfx {
   enabled = true;
-  private ctx: AudioContext | null = null;
   /** Every cue that played, newest last: the e2e tests read it to prove the hooks fire. */
   readonly played: Cue[] = [];
+  readonly music: Music = music;
   play(cue: Cue): void {
     this.played.push(cue);
     if (this.played.length > 200) this.played.shift();
-    if (!this.enabled) return;
+    if (!this.enabled || !graph.sfxOn) return;
     try {
-      this.ctx ??= new AudioContext();
-      if (this.ctx.state === "suspended") void this.ctx.resume();
+      const ctx = graph.ensure();
+      const bus = graph.sfxGain;
+      if (!ctx || !bus) return;
       const n = NOTES[cue];
-      const t0 = this.ctx.currentTime;
+      const t0 = ctx.currentTime;
+      const j = cueJitter(cue, this.played.length);
+      const stops: Array<() => void> = [];
       n.f.forEach((f, i) => {
-        const o = this.ctx!.createOscillator();
-        const g = this.ctx!.createGain();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
         o.type = n.type;
-        o.frequency.value = f;
+        o.frequency.value = f * j.pitch;
         const t = t0 + i * n.d * 0.8;
+        const amp = n.gain * j.vol;
         g.gain.setValueAtTime(0, t);
-        g.gain.linearRampToValueAtTime(n.gain, t + 0.01);
+        g.gain.linearRampToValueAtTime(amp, t + 0.01);
         g.gain.exponentialRampToValueAtTime(0.0001, t + n.d);
-        o.connect(g).connect(this.ctx!.destination);
+        o.connect(g).connect(bus);
         o.start(t);
         o.stop(t + n.d + 0.02);
+        stops.push(() => {
+          try {
+            o.stop();
+          } catch {
+            /* already ended */
+          }
+        });
       });
+      const stop = () => stops.forEach((s) => s());
+      graph.acquire(stop);
+      const last = t0 + n.f.length * n.d + 0.05;
+      setTimeout(() => graph.release(stop), Math.max(50, (last - t0) * 1000));
     } catch {
       /* no audio on this device: the game is fully playable without it */
     }
+  }
+
+  duck(on: boolean): void {
+    graph.duck(on);
+  }
+
+  setScene(scene: MusicScene, era?: number): void {
+    this.music.set(scene, era ?? this.music.era);
+  }
+
+  setMixer(s: { sound: boolean; music: boolean; sfxVol: number; musicVol: number }): void {
+    this.enabled = s.sound;
+    graph.sfxOn = s.sound;
+    graph.musicOn = s.music;
+    graph.sfxVol = s.sfxVol;
+    graph.musicVol = s.musicVol;
+    graph.applyGains();
+  }
+
+  /** Open the graph and keep the score looping. Mute is gain 0, not a stop. */
+  unlock(): void {
+    graph.ensure();
+    this.music.start();
+  }
+
+  sting(): void {
+    this.music.sting();
+  }
+
+  suspend(): void {
+    graph.suspend();
+  }
+
+  resume(): void {
+    graph.resume();
   }
 }
 

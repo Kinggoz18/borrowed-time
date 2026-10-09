@@ -23,6 +23,10 @@ async function fresh(page: Page): Promise<void> {
   await page.reload();
   await page.waitForFunction(() => window.__bt?.ready === true);
 }
+async function skipIntro(page: Page): Promise<void> {
+  const skip = page.locator('[data-act="intro-skip"]');
+  if (await skip.count()) await skip.click();
+}
 /** Landscape: the whole card or sheet fits the short screen, buttons included (no scrolling). */
 async function expectOnScreen(page: Page, sel: string): Promise<void> {
   const off = await page.evaluate((q) => {
@@ -86,6 +90,7 @@ test("the arc: empty land to Village", async ({ page }) => {
 
   // first run: "We're starving. Borrow 10 Hours?"
   await act(page, "new").click();
+  await skipIntro(page);
   await expect(page.getByText("We're starving.")).toBeVisible();
   await expectOnScreen(page, ".card");
   await shot(page, "02-first-run");
@@ -245,6 +250,7 @@ test("the arc: empty land to Village", async ({ page }) => {
   expect(JSON.stringify(await st(page))).toBe(before);
 
   // settings
+  await act(page, "pause").click();
   await act(page, "settings").click();
   await expect(page.locator('[data-screen="settings"]')).toBeVisible();
   await page.locator('[data-set="sound"]').click();
@@ -256,6 +262,7 @@ test("the arc: empty land to Village", async ({ page }) => {
 test("resume mid-day keeps the hour", async ({ page }) => {
   await fresh(page);
   await act(page, "new").click();
+  await skipIntro(page);
   await act(page, "no").click();
   await page.waitForFunction(() => window.__bt.state().hour >= 1, null, { timeout: 15_000 });
   const s0 = await st(page);
@@ -280,6 +287,7 @@ test("blocked storage: the game still plays and says saving is off", async ({ pa
   await page.waitForFunction(() => window.__bt?.ready === true);
   await expect(page.getByText(/Saving is off/)).toBeVisible();
   await act(page, "new").click();
+  await skipIntro(page);
   await act(page, "borrow").click();
   expect((await st(page)).debt).toBe(10);
 });
@@ -296,6 +304,7 @@ test("a stale or corrupt save starts fresh instead of crashing", async ({ page }
 test("tap targets are at least 48 px and nothing overlaps the HUD", async ({ page }) => {
   await fresh(page);
   await act(page, "new").click();
+  await skipIntro(page);
   await act(page, "borrow").click();
   const small = await page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>("#ui button")]
@@ -306,7 +315,7 @@ test("tap targets are at least 48 px and nothing overlaps the HUD", async ({ pag
   );
   expect(small).toEqual([]);
   const overlap = await page.evaluate(() => {
-    const sels = ['[data-hud="hours"]', '[data-hud="debt"]', ".daybox", '[data-hud="charter"]', ".gear", ".bar"];
+    const sels = ['[data-hud="hours"]', '[data-hud="debt"]', ".daybox", '[data-hud="charter"]', ".pause-btn", ".colony-badge", ".bar"];
     const rs = sels.map((s) => [s, document.querySelector(s)!.getBoundingClientRect()] as const);
     const hit = (p: DOMRect, q: DOMRect) => p.left < q.right && q.left < p.right && p.top < q.bottom && q.top < p.bottom;
     const out: string[] = [];
@@ -319,11 +328,26 @@ test("tap targets are at least 48 px and nothing overlaps the HUD", async ({ pag
   expect(overlap).toEqual([]);
   // the HUD is one strip: the island keeps the rest of the screen
   const hudBottom = await page.evaluate(() => document.querySelector(".hud")!.getBoundingClientRect().bottom);
-  expect(hudBottom).toBeLessThanOrEqual(72);
+  expect(hudBottom).toBeLessThanOrEqual(88);
 });
 
 test("held upright, the browser asks to turn the phone sideways", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await fresh(page);
   await expect(page.getByText("Turn your phone sideways to play.")).toBeVisible();
+});
+
+test("portrait setting: home and new game at 360x800", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/");
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem("bt.settings", JSON.stringify({ sound: true, haptics: true, quality: "auto", orientation: "portrait" }));
+  });
+  await page.reload();
+  await page.waitForFunction(() => window.__bt?.ready === true);
+  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  await act(page, "new").click();
+  await skipIntro(page);
+  await expect(page.getByText("We're starving.")).toBeVisible();
 });

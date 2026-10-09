@@ -67,7 +67,7 @@ Each tier-up shows a card listing what's new, plus one lore beat.
 | Colony | 1 | – | 7×7 | 41 | 5 | ×1.2 | ×1 | The basics: Field, Cottage, Clockworks, Watchtower, Hourglass, Palisade |
 | Village | 4 | 36 | 11×11 | 160 | 11 | ×1.25 | ×0.95 | **Roads** (+Hours, but raiders run them: +1 hit when you lose) · **Trade Post** (stake Hours, even borrowed ones, on tomorrow's caravan price) · Lantern Hall (credit) |
 | Town | 8 | 120 | 15×15 | 500 | 17 | ×2 | ×1.08 | **Academy** (research paid up front: the good loan) · **Hospital** (survive a lost raid while in debt) · Sun Mirror (credit) |
-| City | 12 | 380 | 21×21 | 1,600 | 20 | ×2.8 | ×1.22 | **Exchange** (refinance: cheaper, bigger credit) · **Harbour** (borrowing the dusk gives ×1.5) · **Observatory** (sharper dusk hints: names the raid and a ±10% range; the Long Dusk feeds on less debt) |
+| City | 12 | 380 | 21×21 | 1,600 | 20 | ×2.8 | ×1.22 | **Exchange** (refinance: cheaper, bigger credit) · **Harbour** (borrowing the dusk gives ×1.5) · **Observatory** (sharper dusk hints: names the raid and a ±10% range instead of ±25%; the Long Dusk feeds on less debt) |
 
 Building counts per tier (Colony/Village/Town/City): Field 3/5/8/12, Cottage 4/10/20/40, Clockworks and Watchtower 2/4/7/10, one each of the rest once unlocked.
 
@@ -273,7 +273,7 @@ A first session must show all of these within 15 minutes: borrowing, a raid, a L
 **Phase 1 tuning work (balance-affecting changes from this round, none simulated yet):**
 1. Re-run the full gate suite on the final build rules, then with every item below.
 2. Surprise raids: raid nights move within days 2–5, and **bots must decide from the hint band**, not the exact range (the old competent bot prepped from tomorrow's range). Check that borrowing still matters and that the bands hold when the dusk loan is a guess.
-3. Observatory: from an exact forecast to a named type and ±10% range. Re-check City bands.
+3. Observatory: from an exact forecast to a named type and ±10% range (without it the dusk card still shows a ±25% range). Re-check City bands.
 4. People, jobs and food: Hours from staffed slots instead of 1.5·√fed, defence from staffed posts, hunger idle on day 1 and leaving from day 3, abandoned districts.
 5. Roads walking-time penalty, Trade Post food imports, Hospital wounded and plague events.
 6. Per-tier `MAX_GAP` (2 / 3 / 3 / 4) in `sim-test.js`.
@@ -281,9 +281,10 @@ A first session must show all of these within 15 minutes: borrowing, a raid, a L
 **Raids are a surprise: dusk hints** (starting targets; replaces any "telegraph").
 - **Quiet nights are announced** at evening: *"Calm sea."* [the watchtower can vouch for an empty horizon, but not for what's beyond it].
 - **Raid nights are not.** Two raids fall on unannounced nights between days 2 and 5, never two nights running. On a raid night the evening gives one cryptic line: the raid's kind and a rough power band, measured against your defence right now. The Long Dusk always comes on day 6 [the season's end is the one appointment the Late keep], but its strength is hinted the same way.
-- **Kinds:** *skiffs* steal Hours and hit little; *longboats* knock levels off and burn grey land first. The Long Dusk is both.
-- **Bands:** light (below 70% of your defence), even (70–110%), heavy (above 110%). The hint never gives a number.
-- **The Observatory sharpens the hint:** it names the kind plainly and shows a ±10% strength range instead of a band [Ada can count oars, not intentions]. It stays a range, never a forecast, and the Long Dusk still feeds on less debt with it.
+- **Kinds:** *skiffs* steal Hours and hit little; *longboats* knock levels off and burn grey land first. The Long Dusk is both. Each new era unlocks Late from a later grey: Village *ghosts* (hide their approach; an Observatory or an upgraded Watchtower can still name them) and *fast skiffs* (grey land first); Town *siege longboats* (the ring first) and *rams* (the finest roofs); City *ironclads* and *counting boats* (Hours before timber).
+- **Bands:** light (below 70% of your defence), even (70–110%), heavy (above 110%). The line stays atmospheric; the card also shows numbers.
+- **Numbers on the dusk card:** the player's defence now, a raider strength range (about ±25% of nominal) drawn as a bar against that defence, and the defence each choice would give (Hold, Walls, Borrow the dusk). The true roll stays inside a hidden ±15% (the sim is unchanged).
+- **The Observatory sharpens the hint:** it names the kind plainly and narrows the shown range to ±10% [Ada can count oars, not intentions]. It stays a range, never a forecast, and the Long Dusk still feeds on less debt with it.
 - **The decision stays:** borrow the dusk, hold, or everyone to the walls, now chosen under uncertainty. A wrong guess costs Hours or a level, never the run.
 
 | Kind | Light | Even | Heavy |
@@ -329,7 +330,7 @@ w = (wealth / costMul(L)) ^ 0.63        wealth = Hours held + caravan + invested
 ramp(L) = 0.68 + 0.42·L²/(L²+16) + 0.01·L
 day 2 = (0.45w + 5)·ramp·tierRaidScale   day 4 = (0.65w + 7)·ramp·tierRaidScale
 Long Dusk = (0.78w + 8 + 0.55·dawnDebt/costMul)·ramp·tierRaidScale     // dawnDebt: owed at dawn on day 6 (or more)
-actual strength = nominal × 0.85–1.15; the player sees only a band (light / even / heavy) or, with an Observatory, a ±10% range
+actual strength = nominal × 0.85–1.15; the player sees a ±25% range (Observatory ±10%) plus the light / even / heavy band, never the exact roll
 ```
 
 | Phase | Levels | ramp | Feel | Typical costs |
@@ -394,7 +395,7 @@ Once a tier has 500+ seasons of data, **player data overrides the bots** and the
 |---|---|---|
 | Language/build | TypeScript + Vite | Same as One Spark and Loom Rush. |
 | Engine | **PixiJS v8** | Isometric 2.5D sprites, depth sorting, filters (grey/colour-flood shader), ParticleContainer, WebGL/WebGPU. The rules are already pure functions. |
-| Tweens/audio | GSAP, Howler.js | Proven and small. The synthesized SFX stay as placeholders. |
+| Tweens/audio | CSS/Pixi tweens; Web Audio graph | No Howler. Score and SFX are synthesised on separate buses into a compressor/limiter (DECISIONS #22). |
 | Native wrap | Capacitor 8 (move to 9 once stable, as for One Spark) | One codebase for web, Android and iOS. |
 | Plugins | haptics, AdMob (with consent), RevenueCat, preferences, splash, status bar | Same set as the other two games. |
 | Web | Free demo and ad landing page | Same build. |
@@ -578,7 +579,7 @@ This is software-rendered headless Chrome, not a phone GPU, so treat it as a san
 | City view crowded on phones | 2×2/3×3 late looks, merged blocks, sampled people with jobs (section 2), auto-fit plus tap-to-zoom, pinch and pan, tap size targets at zoom (section 2). Test on a real phone in Phase 1. |
 | Economy too complex for casual players | One new system per tier (one building, one effect, explained on the tier card), a debt meter you can read on the map (grey), every effect shown on the card. Test "understood without text" in phase 2. |
 | Seizure feels punishing | It's always telegraphed (the HUD debt bar turns red near the limit, and the Clockkeeper sheet warns). The building's value comes 60% off your debt and the run continues. Tune with telemetry. |
-| Surprise raids feel unfair | Quiet nights are always announced, every raid night gets a hint, the Long Dusk is always day 6, and a wrong guess costs Hours or a level, never the run. Watch telemetry for dusk-loan regret (borrowed on a light night). |
+| Surprise raids feel unfair | Quiet nights are always announced, every raid night gets a hint plus a strength range against your defence, the Long Dusk is always day 6, and a wrong guess costs Hours or a level, never the run. Watch telemetry for dusk-loan regret (borrowed on a light night). |
 | Hunger feels like a fail state | Idle first, leaving only from day 3, Trade Post food imports, and no game over: an abandoned district comes back when people return. |
 | Lore over-explained | Keep `LORE.md` as the canon, one line per in-game beat, and the open questions stay open. |
 | Multiplayer scope creep | Data shape only until soft-launch retention justifies a backend; then the staged roadmap in section 12, async only. |
@@ -668,6 +669,8 @@ The City era drifts towards Aster's look on purpose: we may be building what we 
 | Village | **Hearth & Harvest** (early medieval, farming) | Wheat gold, moss green, ochre, hearth-smoke white | Thatch, wattle and daub, fieldstone, carved oak | Steep thatched roofs, round stone towers, a mill, a long hall | Hurdy-gurdy, drone, frame drum; a bell for dusk | Carved oak, illuminated initials, wax-seal buttons |
 | Town | **Gears & Gilt** (Renaissance clockwork) | Terracotta, ultramarine, gold leaf, plaster white | Brick, terracotta tile, marble, brass gears | Domes, arcades, clock-tower campaniles, gear motifs on façades | Lute, harpsichord, a ticking pulse, chime stingers | Parchment in brass astrolabe rings, gilt corners |
 | City | **Brass & Steam: the Meridian age** | Brass, verdigris, smoke blue; gaslight amber at night | Iron, glass, riveted brass, sooted brick | Chimneys, glass domes, the observatory, trams on the hour-line avenues, clock-faced towers, steam ferries | A small orchestra with an orchestrion; steam hiss, tram bells | Brass bezel around a glass dial face, enamel labels |
+
+**Score (Phase 2).** There is no licensed music. The game synthesises a looping Web Audio score, always on (including menus), on its own bus, clearly apart from effects: Colony day is Tobias on fiddle and tin whistle over surf (a little sharp and late); dusk is bell and drone; a raid is a low drone and drums; Hesper's tent is a music-box tick; a tier-up plays a short bell stinger. Each era swaps the day palette (Village hurdy-gurdy and drone, Town lute / harpsichord / tick, City brass and hiss). Music ducks under cards and raids. Effects have a separate mute and slider. Both buses go through a compressor then a limiter. Voices cap at 8 with pitch/volume jitter. The graph suspends when the app is in the background.
 
 **Look progression inside an era.** Looks 1–2 are the humble arrival of the era. Looks 3–5 are the era settling in. Looks 6–7 are its height: a signature landmark per type (the Colony's best is a beached hull hall; the City's best are the glass domes). Level caps decide which looks each era needs: Colony 1–2, Village 1–4, Town 1–6, City 1–7.
 
