@@ -28,6 +28,7 @@ export type GameEvent =
   | { kind: "research"; id: TechId }
   | { kind: "caravan"; x: number }
   | { kind: "levelUp"; from: number; to: number }
+  | { kind: "hourTick"; gain: number }
   | { kind: "dusk"; dayKind: "raid" | "boss" | "quiet" }
   | { kind: "raid"; result: E.DuskResult }
   | { kind: "night"; result: E.NightResult }
@@ -89,7 +90,10 @@ export function apply(st: IslandState, cmd: Command): GameEvent[] {
     }
     case "hour": {
       if (st.phase !== "day") throw new CommandError("not daytime");
+      const h0 = st.hours;
       const e = E.tickHour(st);
+      const gain = st.hours - h0;
+      if (gain > 0) out.push({ kind: "hourTick", gain });
       if (e) out.push({ kind: "dusk", dayKind: e.kind });
       break;
     }

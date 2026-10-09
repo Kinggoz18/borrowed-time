@@ -10,7 +10,8 @@ import type { IslandState } from "../../core/state";
 import { buildAtlas, type IslandAtlas } from "../../art/island/atlas";
 import type { Job } from "../../art/island/scenery";
 import type { TierConfig } from "../config";
-import { cellAt, cellFront, eraOf, layoutIsland, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
+import { cellFront, eraOf, layoutIsland, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
+import { pickAt } from "./pick";
 import { toTextures, type IslandTextures } from "./textures";
 
 interface Walker {
@@ -34,9 +35,9 @@ interface Tween {
 const JOB_OF: Record<string, Job> = { field: "field", cottage: "field", workshop: "clockworks", tower: "watch", bank: "trade", trade: "trade", lantern: "clockworks" };
 const sleep = (view: IslandView, s: number) => new Promise<void>((res) => view.tween(s, () => undefined, res));
 
-/** Landscape screen furniture (ui.css): the HUD strip on top and the button rail on the right. */
-const HUD_TOP = 64;
-const RAIL_RIGHT = 104;
+/** Play-area insets (CSS px); updated from the DOM HUD and rail each frame. */
+let hudTop = 64;
+let railRight = 104;
 /** Gameplay camera starts this much closer than "whole island fits" (owner: too far out). */
 export const PLAY_ZOOM = 1.6;
 
@@ -116,6 +117,7 @@ export class IslandView {
 
   /** Re-lays the island for the state. Cheap enough to call after every command. */
   sync(st: IslandState, opts: { dusk?: boolean } = {}): void {
+    this.lastState = st;
     this.ensureAtlas(st);
     const prevR = this.layout?.r;
     this.layout = layoutIsland(st, opts);
@@ -222,9 +224,14 @@ export class IslandView {
     this.apply();
   }
   /** The part of the screen the island owns: below the top HUD, left of the button rail. */
+  /** Match the real HUD and action-rail rects from the DOM (safe-area aware). */
+  setPlayInsets(top: number, right: number): void {
+    hudTop = top;
+    railRight = right;
+  }
   private area(): { x: number; y: number; w: number; h: number } {
     const { width, height } = this.app.screen;
-    return { x: 0, y: HUD_TOP, w: Math.max(1, width - RAIL_RIGHT), h: Math.max(1, height - HUD_TOP) };
+    return { x: 0, y: hudTop, w: Math.max(1, width - railRight), h: Math.max(1, height - hudTop) };
   }
   private glide: { x: number; y: number } | null = null;
   /** Glide the camera to a lot if it is off screen or under the HUD/rail (a new building is always seen). */
@@ -245,6 +252,14 @@ export class IslandView {
     const want = (this.app.screen.width - cover) / 2;
     this.glide = { x: f.x - (want - (a.x + a.w / 2)) / this.zoom, y: f.y - TH / 2 };
   }
+  get playLayout(): IslandLayout | null {
+    return this.layout;
+  }
+
+  focusWorld(x: number, y: number): void {
+    this.glide = { x, y };
+  }
+
   /** Centre the camera on a lot (used by tests and to frame the next thing to do). */
   showLot(key: string): void {
     this.glide = null;
@@ -314,13 +329,13 @@ export class IslandView {
   }
   /** World → cell under a screen point. */
   pick(sx: number, sy: number): string | null {
-    const wx = (sx - this.world.x) / this.zoom, wy = (sy - this.world.y) / this.zoom;
-    const t = this.layout.tent;
-    if (Math.abs(wx - t.x) < TW * 0.6 && wy < t.y + 4 && wy > t.y - 70) return "tent";
-    const c = cellAt(wx, wy);
-    const key = `${c.i},${c.j}`;
-    return key;
+    const wx = (sx - this.world.x) / this.zoom;
+    const wy = (sy - this.world.y) / this.zoom;
+    if (!this.layout || !this.lastState) return null;
+    const r = pickAt(wx, wy, this.lastState, this.layout);
+    return r;
   }
+  private lastState: IslandState | null = null;
   tap(sx: number, sy: number): void {
     const key = this.pick(sx, sy);
     if (key === "tent") return this.onTapTent();
@@ -362,8 +377,10 @@ export class IslandView {
   get busy(): boolean {
     return this.tweens.length > 0;
   }
+  frozen = false;
   private update(dt: number): void {
     dt = Math.min(dt, 0.1);
+    if (this.frozen) return;
     if (this.glide && !this.dragFrom) {
       const k = Math.min(1, dt * 6);
       const px = this.cx, py = this.cy;

@@ -4,7 +4,7 @@ import { decodeSave, encodeSave, SAVE_VERSION } from "../src/core/save";
 import { hashState } from "../src/core/snapshot";
 import { LocalKV, MemoryKV } from "../src/platform/storage";
 
-const meta = { introDone: true, colonyName: "Margery's Rest", savedAt: 1 };
+const meta = { introDone: true, storyDone: true, colonyName: "Margery's Rest", savedAt: 1 };
 
 describe("save file", () => {
   it("round-trips mid-day, including the rng state and logs", () => {

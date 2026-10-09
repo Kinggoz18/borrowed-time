@@ -11,6 +11,8 @@ export const SAVE_KEY = "bt.save";
 export interface SaveMeta {
   /** The first-run choice ("We're starving") was made. */
   introDone: boolean;
+  /** The six-line story intro was seen (or skipped). */
+  storyDone: boolean;
   colonyName: string;
   /** Real time the save was written (ms since epoch); supplied by the caller. */
   savedAt: number;
@@ -40,7 +42,7 @@ export const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record
     return {
       v: 1,
       data: { islandId: String(raw.islandId ?? "local"), checkpoint: st, checkpointSeq: 0, commands: [], events: [], seq: 0, state: st },
-      meta: { introDone: true, colonyName: "New Patience", savedAt: 0 },
+      meta: { introDone: true, storyDone: true, colonyName: "New Patience", savedAt: 0 },
     };
   },
 };
@@ -64,7 +66,8 @@ export function decodeSave(raw: string | null): SaveFile | null {
     }
     const f = o as unknown as SaveFile;
     if (!f.data || !validState(f.data.state) || !validState(f.data.checkpoint) || !Array.isArray(f.data.commands) || !Array.isArray(f.data.events)) return null;
-    if (!f.meta || typeof f.meta !== "object") f.meta = { introDone: true, colonyName: "New Patience", savedAt: 0 };
+    if (!f.meta || typeof f.meta !== "object") f.meta = { introDone: true, storyDone: true, colonyName: "New Patience", savedAt: 0 };
+    else if (typeof (f.meta as SaveMeta).storyDone !== "boolean") (f.meta as SaveMeta).storyDone = (f.meta as SaveMeta).introDone;
     return f;
   } catch {
     return null;

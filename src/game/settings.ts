@@ -1,13 +1,16 @@
 /** Player settings, stored next to the save. */
 import type { KV } from "../platform/storage";
 
+export type OrientPref = "landscape" | "portrait" | "auto";
+
 export interface Settings {
   sound: boolean;
   haptics: boolean;
   quality: "auto" | "high" | "mid" | "low";
+  orientation: OrientPref;
 }
 export const SETTINGS_KEY = "bt.settings";
-export const DEFAULT_SETTINGS: Settings = { sound: true, haptics: true, quality: "auto" };
+export const DEFAULT_SETTINGS: Settings = { sound: true, haptics: true, quality: "auto", orientation: "landscape" };
 
 export async function loadSettings(kv: KV): Promise<Settings> {
   try {
@@ -16,7 +19,8 @@ export async function loadSettings(kv: KV): Promise<Settings> {
     return {
       sound: typeof o.sound === "boolean" ? o.sound : DEFAULT_SETTINGS.sound,
       haptics: typeof o.haptics === "boolean" ? o.haptics : DEFAULT_SETTINGS.haptics,
-      quality: o.quality && ["auto", "high", "mid", "low"].includes(o.quality) ? o.quality : "auto",
+      quality: o.quality && ["auto", "high", "mid", "low"].includes(o.quality) ? o.quality : DEFAULT_SETTINGS.quality,
+      orientation: o.orientation && ["landscape", "portrait", "auto"].includes(o.orientation) ? o.orientation : DEFAULT_SETTINGS.orientation,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
