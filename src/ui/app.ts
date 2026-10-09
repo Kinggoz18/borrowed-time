@@ -5,7 +5,7 @@
  */
 import * as E from "../core/engine";
 import type { GameEvent } from "../core/game";
-import { duskHint } from "../core/hints";
+import { duskRead, rangeBar } from "../core/hints";
 import { B, COUNT, EVENTS, LOT_TYPES, TIERS, type BType } from "../core/rules";
 import { cloneState } from "../core/snapshot";
 import type { IslandState } from "../core/state";
@@ -525,21 +525,24 @@ export class GameUI {
     this.d.view.sync(s.state, { dusk: true });
     this.cue("dusk", "medium");
     const st = s.state;
-    const hint = duskHint(st);
+    const read = duskRead(st);
+    const hint = read.hint;
     let decision: E.Decision = "hold";
     if (hint.kind !== "quiet") {
-      const D = Math.round(E.defence(st));
-      const Dw = Math.round(E.defence(st, { walls: true }));
-      const c = cloneState(st);
-      const canB = E.canBorrowDusk(st);
-      const loan = E.duskLoan(st);
-      if (canB) E.applyDecision(c, "borrow");
-      const Db = Math.round(E.defence(c, { borrow: true }));
+      const D = read.defence;
+      const Dw = read.wallsDefence;
+      const Db = read.borrowDefence;
+      const canB = read.canBorrow;
+      const loan = read.loan;
+      const [lo, hi] = hint.range!;
+      const bar = rangeBar(D, lo, hi);
       const p = this.card({
         cls: "dusk",
         kicker: `${KIND_TITLE[hint.kind]} · ${BAND_WORD[hint.band!]}`,
         title: hint.line,
-        body: [h("p", { class: "sub" }, icon("shield"), ` Your defence now: ${D}. They never show their numbers.`), hint.range ? h("p", { class: "sub" }, `Ada counts ${hint.range[0]}–${hint.range[1]}.`) : null],
+        body: [
+          duskMeter(D, lo, hi, bar, E.hasB(st, "observatory")),
+        ],
         buttons: [
           { id: "hold", label: "Hold", note: `Defence ${D}. Keep your Hours.`, icon: "shield" },
           { id: "walls", label: "Everyone to the walls", note: `Defence ${Dw}. No morning bonus. More hurt if they break in.`, icon: "people" },
@@ -716,5 +719,28 @@ export class GameUI {
 
 function req(ok: boolean, text: string, word?: string): HTMLElement {
   return h("span", { class: "req" + (ok ? " ok" : "") }, icon(ok ? "check" : "cross"), text, word ? h("small", {}, ` ${word}`) : null);
+}
+
+/** Dusk card hook: defence, a raider range, and a bar against that defence. */
+function duskMeter(
+  def: number,
+  lo: number,
+  hi: number,
+  bar: { loPct: number; widthPct: number; defPct: number },
+  observatory: boolean,
+): HTMLElement {
+  const counted = observatory ? `Ada counts ${lo}–${hi}.` : `Raiders about ${lo}–${hi}.`;
+  return h(
+    "div",
+    { class: "dusk-read", "data-dusk-def": def, "data-dusk-lo": lo, "data-dusk-hi": hi },
+    h("p", { class: "sub" }, icon("shield"), ` Your defence: ${def}`),
+    h("p", { class: "sub" }, icon("boat"), ` ${counted}`),
+    h(
+      "div",
+      { class: "dusk-bar", role: "img", "aria-label": `Raiders ${lo} to ${hi} against defence ${def}` },
+      h("i", { class: "raid", style: `left:${bar.loPct}%;width:${bar.widthPct}%` }),
+      h("b", { class: "mark", style: `left:${bar.defPct}%` }),
+    ),
+  );
 }
 const safest = (st: IslandState): string | undefined => E.greyOrder(st).slice().reverse().find((k) => E.isFree(st, k));

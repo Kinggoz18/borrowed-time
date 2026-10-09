@@ -67,7 +67,7 @@ Each tier-up shows a card listing what's new, plus one lore beat.
 | Colony | 1 | – | 7×7 | 41 | 5 | ×1.2 | ×1 | The basics: Field, Cottage, Clockworks, Watchtower, Hourglass, Palisade |
 | Village | 4 | 36 | 11×11 | 160 | 11 | ×1.25 | ×0.95 | **Roads** (+Hours, but raiders run them: +1 hit when you lose) · **Trade Post** (stake Hours, even borrowed ones, on tomorrow's caravan price) · Lantern Hall (credit) |
 | Town | 8 | 120 | 15×15 | 500 | 17 | ×2 | ×1.08 | **Academy** (research paid up front: the good loan) · **Hospital** (survive a lost raid while in debt) · Sun Mirror (credit) |
-| City | 12 | 380 | 21×21 | 1,600 | 20 | ×2.8 | ×1.22 | **Exchange** (refinance: cheaper, bigger credit) · **Harbour** (borrowing the dusk gives ×1.5) · **Observatory** (sharper dusk hints: names the raid and a ±10% range; the Long Dusk feeds on less debt) |
+| City | 12 | 380 | 21×21 | 1,600 | 20 | ×2.8 | ×1.22 | **Exchange** (refinance: cheaper, bigger credit) · **Harbour** (borrowing the dusk gives ×1.5) · **Observatory** (sharper dusk hints: names the raid and a ±10% range instead of ±25%; the Long Dusk feeds on less debt) |
 
 Building counts per tier (Colony/Village/Town/City): Field 3/5/8/12, Cottage 4/10/20/40, Clockworks and Watchtower 2/4/7/10, one each of the rest once unlocked.
 
@@ -273,7 +273,7 @@ A first session must show all of these within 15 minutes: borrowing, a raid, a L
 **Phase 1 tuning work (balance-affecting changes from this round, none simulated yet):**
 1. Re-run the full gate suite on the final build rules, then with every item below.
 2. Surprise raids: raid nights move within days 2–5, and **bots must decide from the hint band**, not the exact range (the old competent bot prepped from tomorrow's range). Check that borrowing still matters and that the bands hold when the dusk loan is a guess.
-3. Observatory: from an exact forecast to a named type and ±10% range. Re-check City bands.
+3. Observatory: from an exact forecast to a named type and ±10% range (without it the dusk card still shows a ±25% range). Re-check City bands.
 4. People, jobs and food: Hours from staffed slots instead of 1.5·√fed, defence from staffed posts, hunger idle on day 1 and leaving from day 3, abandoned districts.
 5. Roads walking-time penalty, Trade Post food imports, Hospital wounded and plague events.
 6. Per-tier `MAX_GAP` (2 / 3 / 3 / 4) in `sim-test.js`.
@@ -282,8 +282,9 @@ A first session must show all of these within 15 minutes: borrowing, a raid, a L
 - **Quiet nights are announced** at evening: *"Calm sea."* [the watchtower can vouch for an empty horizon, but not for what's beyond it].
 - **Raid nights are not.** Two raids fall on unannounced nights between days 2 and 5, never two nights running. On a raid night the evening gives one cryptic line: the raid's kind and a rough power band, measured against your defence right now. The Long Dusk always comes on day 6 [the season's end is the one appointment the Late keep], but its strength is hinted the same way.
 - **Kinds:** *skiffs* steal Hours and hit little; *longboats* knock levels off and burn grey land first. The Long Dusk is both.
-- **Bands:** light (below 70% of your defence), even (70–110%), heavy (above 110%). The hint never gives a number.
-- **The Observatory sharpens the hint:** it names the kind plainly and shows a ±10% strength range instead of a band [Ada can count oars, not intentions]. It stays a range, never a forecast, and the Long Dusk still feeds on less debt with it.
+- **Bands:** light (below 70% of your defence), even (70–110%), heavy (above 110%). The line stays atmospheric; the card also shows numbers.
+- **Numbers on the dusk card:** the player's defence now, a raider strength range (about ±25% of nominal) drawn as a bar against that defence, and the defence each choice would give (Hold, Walls, Borrow the dusk). The true roll stays inside a hidden ±15% (the sim is unchanged).
+- **The Observatory sharpens the hint:** it names the kind plainly and narrows the shown range to ±10% [Ada can count oars, not intentions]. It stays a range, never a forecast, and the Long Dusk still feeds on less debt with it.
 - **The decision stays:** borrow the dusk, hold, or everyone to the walls, now chosen under uncertainty. A wrong guess costs Hours or a level, never the run.
 
 | Kind | Light | Even | Heavy |
@@ -329,7 +330,7 @@ w = (wealth / costMul(L)) ^ 0.63        wealth = Hours held + caravan + invested
 ramp(L) = 0.68 + 0.42·L²/(L²+16) + 0.01·L
 day 2 = (0.45w + 5)·ramp·tierRaidScale   day 4 = (0.65w + 7)·ramp·tierRaidScale
 Long Dusk = (0.78w + 8 + 0.55·dawnDebt/costMul)·ramp·tierRaidScale     // dawnDebt: owed at dawn on day 6 (or more)
-actual strength = nominal × 0.85–1.15; the player sees only a band (light / even / heavy) or, with an Observatory, a ±10% range
+actual strength = nominal × 0.85–1.15; the player sees a ±25% range (Observatory ±10%) plus the light / even / heavy band, never the exact roll
 ```
 
 | Phase | Levels | ramp | Feel | Typical costs |
@@ -578,7 +579,7 @@ This is software-rendered headless Chrome, not a phone GPU, so treat it as a san
 | City view crowded on phones | 2×2/3×3 late looks, merged blocks, sampled people with jobs (section 2), auto-fit plus tap-to-zoom, pinch and pan, tap size targets at zoom (section 2). Test on a real phone in Phase 1. |
 | Economy too complex for casual players | One new system per tier (one building, one effect, explained on the tier card), a debt meter you can read on the map (grey), every effect shown on the card. Test "understood without text" in phase 2. |
 | Seizure feels punishing | It's always telegraphed (the HUD debt bar turns red near the limit, and the Clockkeeper sheet warns). The building's value comes 60% off your debt and the run continues. Tune with telemetry. |
-| Surprise raids feel unfair | Quiet nights are always announced, every raid night gets a hint, the Long Dusk is always day 6, and a wrong guess costs Hours or a level, never the run. Watch telemetry for dusk-loan regret (borrowed on a light night). |
+| Surprise raids feel unfair | Quiet nights are always announced, every raid night gets a hint plus a strength range against your defence, the Long Dusk is always day 6, and a wrong guess costs Hours or a level, never the run. Watch telemetry for dusk-loan regret (borrowed on a light night). |
 | Hunger feels like a fail state | Idle first, leaving only from day 3, Trade Post food imports, and no game over: an abandoned district comes back when people return. |
 | Lore over-explained | Keep `LORE.md` as the canon, one line per in-game beat, and the open questions stay open. |
 | Multiplayer scope creep | Data shape only until soft-launch retention justifies a backend; then the staged roadmap in section 12, async only. |

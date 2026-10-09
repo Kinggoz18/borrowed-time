@@ -13,8 +13,58 @@ export interface DuskHint {
   kind: HintKind;
   band: Band | null;
   line: string;
-  /** With the Observatory (City): a ±10% strength range. Otherwise null. */
+  /** Estimated raider strength as a range. Null on quiet nights. */
   range: [number, number] | null;
+}
+
+/** Displayed raider range without an Observatory (the true roll stays hidden). */
+export const HINT_SPREAD = 0.25;
+/** Observatory: Ada can count oars, not intentions. */
+export const OBS_HINT_SPREAD = 0.1;
+
+export function hintSpread(st: IslandState): number {
+  return E.hasB(st, "observatory") ? OBS_HINT_SPREAD : HINT_SPREAD;
+}
+
+export function strengthRange(nominal: number, spread: number): [number, number] {
+  return [Math.round(nominal * (1 - spread)), Math.round(nominal * (1 + spread))];
+}
+
+/** Layout for the dusk card's defence-vs-raiders bar (percent of a shared scale). */
+export function rangeBar(
+  def: number,
+  lo: number,
+  hi: number,
+): { max: number; loPct: number; widthPct: number; defPct: number } {
+  const max = Math.max(def, hi, 1) * 1.15;
+  return {
+    max,
+    loPct: (lo / max) * 100,
+    widthPct: (Math.max(0, hi - lo) / max) * 100,
+    defPct: (def / max) * 100,
+  };
+}
+
+/** Numbers the dusk card shows: defence now, each choice, and the raiders' range. */
+export interface DuskRead {
+  hint: DuskHint;
+  defence: number;
+  wallsDefence: number;
+  borrowDefence: number;
+  canBorrow: boolean;
+  loan: number;
+}
+
+export function duskRead(st: IslandState): DuskRead {
+  const hint = duskHint(st);
+  return {
+    hint,
+    defence: E.defence(st),
+    wallsDefence: E.defence(st, { walls: true }),
+    borrowDefence: E.defence(st, { borrow: true }),
+    canBorrow: E.canBorrowDusk(st),
+    loan: E.duskLoan(st),
+  };
 }
 
 /** Four or five short lines per kind and band, rotated by season and day. */
@@ -118,6 +168,10 @@ export function duskHint(st: IslandState): DuskHint {
   const kind: HintKind = k === "boss" ? "longDusk" : (st.season * 7 + st.day) % 3 === 0 ? "longboats" : "skiffs";
   const n = E.nominal(st);
   const band = bandOf(n, E.defence(st));
-  const obs = E.hasB(st, "observatory");
-  return { kind, band, line: pickLine(LINES[kind][band], st.season, st.day), range: obs ? [Math.round(n * 0.9), Math.round(n * 1.1)] : null };
+  return {
+    kind,
+    band,
+    line: pickLine(LINES[kind][band], st.season, st.day),
+    range: strengthRange(n, hintSpread(st)),
+  };
 }

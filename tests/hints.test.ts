@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as E from "../src/core/engine";
-import { bandOf, duskHint, LINES, pickLine, QUIET } from "../src/core/hints";
+import { bandOf, duskHint, duskRead, HINT_SPREAD, LINES, OBS_HINT_SPREAD, pickLine, QUIET, rangeBar, strengthRange } from "../src/core/hints";
+import { lotKeys } from "../src/core/rules";
 import { hashState } from "../src/core/snapshot";
 
 describe("dusk hints", () => {
@@ -39,7 +40,7 @@ describe("dusk hints", () => {
     expect(h.band).not.toBeNull();
     expect(h.line).not.toMatch(/\d/);
     expect(LINES[h.kind as "skiffs" | "longboats"][h.band!]).toContain(h.line);
-    expect(h.range).toBeNull();
+    expect(h.range).not.toBeNull();
     st.day = 6;
     expect(duskHint(st).kind).toBe("longDusk");
     expect(LINES.longDusk[duskHint(st).band!]).toContain(duskHint(st).line);
@@ -65,6 +66,48 @@ describe("dusk hints", () => {
     st.day = 4;
     const before = hashState(st);
     duskHint(st);
+    duskRead(st);
     expect(hashState(st)).toBe(before);
+  });
+  it("shows a ±25% raider range, narrowed to ±10% with an Observatory", () => {
+    const st = E.newGame({ seed: 3 });
+    st.day = 2;
+    const n = E.nominal(st);
+    const h = duskHint(st);
+    expect(h.range).toEqual(strengthRange(n, HINT_SPREAD));
+    const wide = h.range![1] - h.range![0];
+    st.tier = 3;
+    st.L = 12;
+    st.hours = 5000;
+    for (const k of lotKeys(3)) if (!(k in st.lots)) st.lots[k] = null;
+    const lot = E.greyOrder(st).slice().reverse().find((k) => E.isFree(st, k))!;
+    expect(E.build(st, lot, "observatory")).toBe(true);
+    const n1 = E.nominal(st);
+    const obs = duskHint(st);
+    expect(obs.range).toEqual(strengthRange(n1, OBS_HINT_SPREAD));
+    const without = strengthRange(n1, HINT_SPREAD);
+    expect(obs.range![1] - obs.range![0]).toBeLessThan(without[1] - without[0]);
+    expect(wide).toBeGreaterThan(0);
+  });
+  it("dusk read lists defence now and the defence each choice would give", () => {
+    const st = E.newGame({ seed: 3 });
+    st.hours = 200;
+    E.build(st, "pal", "palisade");
+    st.day = 2;
+    const r = duskRead(st);
+    expect(r.defence).toBe(E.defence(st));
+    expect(r.wallsDefence).toBe(E.defence(st, { walls: true }));
+    expect(r.borrowDefence).toBe(E.defence(st, { borrow: true }));
+    expect(r.wallsDefence).toBeGreaterThan(r.defence);
+    expect(r.borrowDefence).toBeGreaterThan(r.defence);
+    expect(r.canBorrow).toBe(true);
+    expect(r.loan).toBe(E.duskLoan(st));
+    expect(r.hint.range).not.toBeNull();
+  });
+  it("the range bar places defence on the same scale as the raiders", () => {
+    const b = rangeBar(12, 9, 15);
+    expect(b.defPct).toBeGreaterThan(b.loPct);
+    expect(b.defPct).toBeLessThan(b.loPct + b.widthPct + 1);
+    expect(b.loPct + b.widthPct).toBeLessThan(100);
   });
 });
