@@ -4,6 +4,8 @@ import { defineConfig, devices } from "@playwright/test";
 // sanity check that the scene runs, never a performance result. The phone is the real test.
 export default defineConfig({
   testDir: "e2e",
+  // The stress scene and frame-time runs are paused by the owner (DECISIONS #16): RUN_STRESS=1 brings them back.
+  testIgnore: process.env.RUN_STRESS === "1" ? [] : ["stress.spec.ts"],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,
@@ -30,8 +32,8 @@ export default defineConfig({
     },
   ],
   projects: [
-    // A typical 20:9 Android phone: 360x800 CSS px at DPR 2.
-    { name: "phone-360", use: { ...devices["Desktop Chrome"], viewport: { width: 360, height: 800 }, deviceScaleFactor: 2 } },
-    { name: "phone-540", use: { ...devices["Desktop Chrome"], viewport: { width: 540, height: 960 }, deviceScaleFactor: 1 } },
+    // The game is played in landscape. A typical 20:9 Android phone held sideways: 800x360 CSS px at DPR 2.
+    { name: "phone-800", use: { ...devices["Desktop Chrome"], viewport: { width: 800, height: 360 }, deviceScaleFactor: 2 } },
+    { name: "phone-960", use: { ...devices["Desktop Chrome"], viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 } },
   ],
 });
