@@ -448,7 +448,8 @@ export class GameUI {
         h("li", { class: g.kept ? "ok" : "" }, icon(g.kept ? "check" : "cross"), "Not over Hesper's limit"),
         h("li", { class: g.seal ? "ok" : "" }, icon(g.seal ? "check" : "cross"), g.seal ? "No seal on the charter" : `Hesper's seal until day ${st.lien - (st.season - 1) * 6}`),
       ),
-      h("p", { class: "sub" }, "People come when there's food and room. Homes and Fields bring them."),
+      h("p", { class: "sub" }, icon("people"), `Food for ${Math.floor(E.food(st))} · homes for ${E.popRoom(st)}. People only stay if both last.`),
+      Math.min(Math.floor(E.food(st)), E.popRoom(st)) < nx.pop && h("p", { class: "tag grey" }, icon("cross"), `Build or upgrade Fields and Cottages: ${nx.pop} people need food and homes.`),
     ]);
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "charter";
   }
@@ -652,7 +653,17 @@ export class GameUI {
   // ---------- dev-only debug panel ----------
   private openDebug(): void {
     const s = this.session!;
-    const act = (label: string, id: string, fn: () => void) => h("button", { class: "btn opt", "data-act": id, onclick: () => (fn(), this.d.onDevChange?.(), this.refreshAfterDev()) }, h("b", {}, label));
+    const act = (label: string, id: string, fn: () => void) =>
+      h("button", { class: "btn opt", "data-act": id, onclick: () => {
+        const L0 = s.state.L;
+        fn();
+        if (s.state.L > L0) {
+          this.cue("levelUp", "medium");
+          this.toast(`Level ${s.state.L}`, "good");
+        }
+        this.d.onDevChange?.();
+        this.refreshAfterDev();
+      } }, h("b", {}, label));
     const el = this.sheet("Debug (dev build only)", [
       h("p", { class: "sub" }, "Changes here restart the replay log from now."),
       h(
