@@ -43,3 +43,13 @@ Pass-1 fixes 9–12 and 14 landed in "Trim the HUD and fix dusk and rest button 
 | 9 | low | The plan still allowed interstitial ads. | Rewarded video only (DECISIONS #14). |
 | 10 | note | The seizure card shows Hesper's tent, not the building she took (the lift animation does show it). | Phase 2: the card art follows the seized building. |
 | 11 | note | People animate with the two baked poses only (the bible's low tier), not pin-driven sine motion. | Phase 2 with the painted parts. |
+
+## Pass 3 (every landscape screen, both sizes)
+
+| # | Sev | Finding | Fix |
+|---|---|---|---|
+| 1 | med | Tapping a lot opened the side sheet over that very lot, so you couldn't see what you were building or upgrading. | The camera glides the lot into the part of the island left of the sheet; a drag cancels the glide, and it stops at the island's edge. |
+| 2 | low | Settings used the people icon for Vibration. | A phone-buzz icon. |
+| 3 | note | Home, first-run, dusk, raid result, Village and seizure cards fit both sizes without scrolling (tested by `expectOnScreen`); HUD items never overlap (tested). | – |
+
+Pass 3 finds nothing above "low" after these fixes. Review closed for Phase 1.
