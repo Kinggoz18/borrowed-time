@@ -1,0 +1,54 @@
+---
+description: Commit messages and signing. Plain Conventional Commits, no signing, no trailers, no agent attribution.
+alwaysApply: true
+---
+
+# Commits
+
+Every commit is one Conventional Commits subject plus an optional plain body. Nothing else.
+
+## Format
+- Subject: `<type>(<optional-scope>): <imperative summary>`, 72 chars max, lowercase type, no trailing period.
+- Types: `feat` `fix` `refactor` `perf` `test` `docs` `build` `ci` `chore` `style` `revert`.
+- Body (optional): blank line after the subject, wrapped at ~72, says why, not how.
+- Breaking change: `feat!:` or a `BREAKING CHANGE:` footer. That is the only footer allowed.
+
+## Never
+- Never sign: no `-S`, `--gpg-sign`, `-s`, `--signoff`. Never pass `-c commit.gpgsign=true`.
+- Never add trailers: no `Signed-off-by:`, `Co-authored-by:`, `Made-with:`, `Generated-by:`, no `--trailer`.
+- Never name an agent, model, or tool (Cursor, AI, Claude, GPT, "generated") in the subject or body.
+- Never change git config or identity (`user.name`, `user.email`, `core.hooksPath`).
+- Never use `--no-verify` to get past the commit-msg guard.
+
+## When the guard rejects a commit
+The global `commit-msg` hook (`~/.config/git/hooks/commit-msg`) strips or rejects trailers,
+depending on `commitguard.mode`. Cursor can inject
+`Co-authored-by: Cursor <cursoragent@cursor.com>` on its own; that is not an excuse to bypass.
+Write the message to a file without trailers and run `git commit -F <file>`
+(or `git commit --amend -F <file>` if the commit is local and unpushed).
+If it keeps coming back, tell me to turn off Cursor Settings → Agents → Attribution.
+
+## Repo rules that disagree
+This rule wins over repo docs that ask for DCO sign-off or co-author trailers.
+Say in your reply that you skipped the repo's sign-off requirement.
+
+## Do
+```
+feat(auth): add recovery codes to two-step sign-in
+fix(signals): stop duplicate alerts after a worker restart
+refactor(watchlists): split the create form into steps
+
+docs: explain local setup in plain steps
+```
+
+## Don't
+```
+Added some stuff                      # no type, vague
+feat: Add login page.                 # capitalised summary, trailing period
+fix: stuff (generated with Cursor)    # agent attribution
+git commit -S -s -m "fix: typo"       # signed and signed-off
+feat: add export
+
+Co-authored-by: Cursor <cursoragent@cursor.com>   # trailer
+Signed-off-by: Jane <jane@example.com>            # trailer
+```

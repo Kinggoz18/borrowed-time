@@ -1,0 +1,51 @@
+---
+description: Where agents keep evidence (screenshots, videos, logs), how long it lives, and cleaning up everything else they create.
+alwaysApply: true
+---
+
+# Artifact hygiene
+
+Keep only what I need to review, in one known folder. Remove everything else you created.
+
+## Evidence: one folder per run
+- In a repo: `.artifacts/<run-id>/` at the root (gitignored). Outside a repo: `~/.agent-artifacts/<run-id>/`.
+- `<run-id>` = `YYYYMMDD-HHMM-<slug>`, e.g. `20260930-2115-invoice-drawer` (sorts oldest to newest).
+- Inside: `screenshots/`, `videos/`, `logs/`, and a `README.md` with one line per file saying what it proves.
+- Create `.pending-review` in the run folder when you save evidence. Name the folder in your reply.
+- pstack `verify-*` skills and `/create-verification-skill`: use `.artifacts/<run-id>/` as the
+  evidence location they name. Their rule "cleanup never deletes evidence" still holds.
+
+## Evidence lifecycle
+1. End-of-task cleanup removes instances and scratch, never `.artifacts/`.
+2. Evidence stays until I review it (I say so, or its PR is merged or closed). Then delete `.pending-review`.
+3. Retention: keep the newest 5 runs. Older runs are deleted unless they contain `.keep`,
+   or `.pending-review` is less than 30 days old.
+4. Prune at the start of a new task, never in the task that made the evidence:
+   `~/.config/chigozie-rules/prune-artifacts.sh --keep 5` (add `--dry-run` to preview).
+
+## Scratch: delete before you finish
+- Temp clones and worktrees go in `${TMPDIR:-/tmp}/agent-<run-id>/`; `rm -rf` it (`git worktree remove` for worktrees). Don't `cd` into it first.
+- Test databases, containers, volumes: name them with the run-id and remove only those.
+- Dev servers, watchers, browsers you started: record the PID at start, kill that PID. Never kill by name.
+- Build output, downloaded media, generated fixtures, and screenshots or logs outside `.artifacts/`: delete.
+- Helper scripts or files added only to verify something: delete, or move into the run folder if they are evidence.
+
+## Never delete
+- Anything you didn't create: my dev database, `node_modules`, build output I rely on, uploads.
+- Evidence still pending review. Anything outside the repo, your scratch dir, or `.artifacts/`.
+
+## Do / Don't
+| Don't | Do |
+| --- | --- |
+| `screenshot.png` in the repo root | `.artifacts/20260930-2115-drawer/screenshots/drawer-open.png` |
+| `/tmp/run.webm` left forever | `.artifacts/<run-id>/videos/checkout.webm`, listed in its README |
+| `pkill -f vite` | `kill "$DEV_PID"` (the PID you saved when you started it) |
+| `rm -rf .artifacts` right after capturing | leave it; prune later with retention |
+| A test DB called `test` left running | `docker rm -f pg-20260930-2115` at the end |
+
+## .gitignore snippet (see `~/.config/chigozie-rules/artifacts.gitignore`)
+`.artifacts/`, `playwright-report/`, `test-results/`, `*.agent.log`
+
+## Final reply
+- Evidence: `.artifacts/<run-id>/` (N files), or "none".
+- Cleaned up: clones, containers, servers (PIDs), temp files. Still running: what and why.

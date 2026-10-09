@@ -1,0 +1,46 @@
+---
+description: UX structure and accessibility. WCAG 2.2 AA, one main task per screen, split dense info, designed states, no MVP look.
+globs: "**/*.tsx,**/*.jsx,**/*.vue,**/*.html,**/*.css,**/*.scss"
+alwaysApply: false
+---
+
+# UX structure
+
+## One main task per screen
+- Each route has one primary action (one filled button). Everything else is secondary or moves away.
+- Too much for one view? Split it: sub-routes (`/settings/profile`, `/settings/billing`),
+  tabs for sibling views of the same thing, a drawer for details or quick edits, a stepper for long forms.
+- Show the 3–5 things people need first; put the rest behind "More", a tab, or a detail page.
+- Deep links: every tab, drawer and step has a URL, so Back and refresh work.
+
+## Designed states, every time
+- Loading: skeletons shaped like the real layout (no bare spinners on full pages, no layout jump).
+- Empty: what will appear here + one action ("No invoices yet. Create your first invoice.").
+- Error: plain cause + next step + retry; keep the user's input. Never a raw error or blank page.
+- Also: partial data, offline/slow, no permission, success confirmation.
+
+## Accessibility (WCAG 2.2 AA)
+- Contrast ≥ 4.5:1 for text, ≥ 3:1 for large text, icons, borders of inputs and focus rings.
+- Everything works by keyboard; visible focus that is never hidden behind sticky bars (2.4.11).
+- Targets ≥ 24×24 px (2.5.8); no drag-only actions without a button alternative (2.5.7).
+- Real elements: `<button>`, `<a href>`, `<label for>`, one `<h1>`, landmarks (`<main>`, `<nav>`).
+- Icon-only buttons get `aria-label`; images get meaningful `alt` or `alt=""`.
+- Errors are tied to fields (`aria-describedby`) and announced (`role="alert"` / live region).
+- Don't ask for the same info twice (3.3.7); sign-in allows paste and password managers (3.3.8).
+- Respect `prefers-reduced-motion`; nothing flashes.
+- Add an axe check to e2e (see `~/.config/chigozie-rules/a11y.e2e.snippet.ts`); zero violations to merge.
+
+## Must not look like an MVP
+- One spacing scale, one type scale, consistent radii and shadows; align to a grid.
+- Real copy, real icons, no lorem ipsum, no default browser alerts or unstyled tables.
+- No dead ends: no "Coming soon" buttons, disabled controls explain why.
+
+## Do / Don't
+| Don't | Do |
+| --- | --- |
+| Settings page with 40 fields in one scroll | `/settings/profile`, `/settings/team`, `/settings/billing` |
+| Order table + edit form + history on one screen | Table; row opens a drawer; history is a tab in the drawer |
+| Spinner in the middle of a blank page | Skeleton rows matching the table |
+| `<div onClick>` as a button | `<button type="button">` |
+| Red border as the only error signal | Icon + text message linked with `aria-describedby` |
+| Three primary buttons in a header | One primary, the rest as secondary or in a menu |

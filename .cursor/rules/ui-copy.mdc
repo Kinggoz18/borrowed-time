@@ -1,0 +1,43 @@
+---
+description: UI copy for non-technical users. Short, plain, outcome-first; never expose internals.
+globs: "**/*.tsx,**/*.jsx,**/*.html,**/*.vue,**/*.mdx,**/locales/**/*.json,**/i18n/**/*.json"
+alwaysApply: false
+---
+
+# UI copy
+
+Write for a busy person who is not technical. Say what they get, in their words.
+
+## Rules
+- Short: headings ≤ 6 words, buttons 1–3 words starting with a verb, helper text one sentence.
+- Plain words. Sell the outcome ("Get paid faster"), not the mechanism ("Automated invoice pipeline").
+- Never expose internals: APIs, endpoints, IDs/UUIDs, status codes, stack names, provider or
+  vendor names, "legacy", "v2", "MVP", env names, table or field names.
+- Errors say what happened and what to do next, in one or two sentences. No codes, no blame.
+- Empty states say what will appear here and give one action.
+- Landing pages: problem → outcome → proof → one call to action. One primary CTA per page.
+- Consistent terms: pick one word per concept ("customer", not customer/client/account).
+
+## Do / Don't
+| Don't | Do |
+| --- | --- |
+| `Sync via Paystack API` | `Get paid by card or bank transfer` |
+| `Legacy dashboard` | `Classic view` (or just remove it) |
+| `Error 500: request to /api/orders failed` | `We couldn't load your orders. Try again.` |
+| `No records found in inventory table` | `No products yet. Add your first product.` |
+| `User ID: 7f3c…` | show the person's name or email |
+| `Powered by OpenAI GPT` | `Smart suggestions` |
+| `Submit` | `Create invoice` |
+| `Welcome to our MVP!` | `Run your shop from one place` |
+
+## Landing page skeleton
+1. Problem: "Chasing payments eats your week."
+2. Outcome: "Send an invoice in a minute. Get paid in days, not weeks."
+3. Proof: a number, a logo row, or one short customer quote.
+4. One CTA: "Start free".
+
+## Check
+Run `~/.config/chigozie-rules/check-ui-copy.sh` (or the repo copy) before finishing UI work.
+It greps string literals and JSX text for banned terms (list: `~/.config/chigozie-rules/ui-copy-terms.txt`). Fix hits by rewording, not by
+adding `ui-copy-ignore`. Use `ui-copy-ignore` only for text users never see.
+A repo can override the term list with a `.ui-copy-terms` file at its root.
