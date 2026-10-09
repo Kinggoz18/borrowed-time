@@ -237,6 +237,14 @@ export class IslandView {
     const f = cellFront(i, j);
     this.glide = { x: f.x, y: f.y - TH / 2 };
   }
+  /** Glide so a lot sits in the middle of the island still visible left of a side sheet `cover` px wide. */
+  focusLot(key: string, cover: number): void {
+    const [i, j] = kij(key);
+    const f = cellFront(i, j);
+    const a = this.area();
+    const want = (this.app.screen.width - cover) / 2;
+    this.glide = { x: f.x - (want - (a.x + a.w / 2)) / this.zoom, y: f.y - TH / 2 };
+  }
   /** Centre the camera on a lot (used by tests and to frame the next thing to do). */
   showLot(key: string): void {
     this.glide = null;
@@ -270,6 +278,7 @@ export class IslandView {
     return TW * this.zoom;
   }
   private down(e: FederatedPointerEvent): void {
+    this.glide = null;
     this.pointers.set(e.pointerId, { x: e.global.x, y: e.global.y });
     const pts = [...this.pointers.values()];
     const dist = pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0;
@@ -357,10 +366,12 @@ export class IslandView {
     dt = Math.min(dt, 0.1);
     if (this.glide && !this.dragFrom) {
       const k = Math.min(1, dt * 6);
+      const px = this.cx, py = this.cy;
       this.cx += (this.glide.x - this.cx) * k;
       this.cy += (this.glide.y - this.cy) * k;
-      if (Math.hypot(this.glide.x - this.cx, this.glide.y - this.cy) < 0.5) this.glide = null;
       this.apply();
+      // arrived, or held at the island's edge
+      if (Math.hypot(this.glide.x - this.cx, this.glide.y - this.cy) < 0.5 || Math.hypot(this.cx - px, this.cy - py) < 0.05) this.glide = null;
     }
     for (const tw of this.tweens.slice()) {
       tw.t += dt;

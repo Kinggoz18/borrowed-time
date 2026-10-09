@@ -323,6 +323,9 @@ export class GameUI {
     const k = owner[key] ?? key;
     if (st.lots[k]) this.openLot(k);
     else this.openBuild(k);
+    // keep the tapped lot in view beside the side sheet
+    const cover = this.layer.querySelector(".sheet")?.getBoundingClientRect().width ?? 0;
+    this.d.view.focusLot(k, cover);
   }
 
   openBuild(key?: string): void {
@@ -652,7 +655,7 @@ export class GameUI {
       { class: "settings", "data-screen": "settings", role: "dialog", "aria-label": "Settings" },
       h("header", {}, h("button", { class: "btn icon-btn", "aria-label": "Back", "data-act": "back", onclick: back }, icon("back")), h("h2", {}, "Settings")),
       toggle("sound", "Sound", "sound"),
-      toggle("haptics", "Vibration", "people"),
+      toggle("haptics", "Vibration", "vibrate"),
       h(
         "label",
         { class: "setting" },
