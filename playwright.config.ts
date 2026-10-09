@@ -11,20 +11,20 @@ export default defineConfig({
   timeout: 120_000,
   expect: { timeout: 30_000 },
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: "http://127.0.0.1:5191",
     trace: "off",
   },
   webServer: [
     {
-      command: "npx vite --port 5173 --strictPort",
-      url: "http://127.0.0.1:5173",
+      command: "npx vite --port 5191 --strictPort",
+      url: "http://127.0.0.1:5191",
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },
     {
       // The production build (no perf HUD), built by `npm run build` before e2e.
-      command: "npx vite preview --port 4173 --strictPort",
-      url: "http://127.0.0.1:4173",
+      command: "npx vite preview --port 4191 --strictPort",
+      url: "http://127.0.0.1:4191",
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
     },

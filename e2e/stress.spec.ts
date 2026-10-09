@@ -15,7 +15,7 @@ function watchErrors(page: Page): string[] {
 }
 
 async function boot(page: Page, query: string): Promise<void> {
-  await page.goto(`/?${query}`);
+  await page.goto(`/?stress=1&${query}`);
   await page.waitForFunction(() => window.__bt?.ready || window.__bt?.error, null, { timeout: 60_000 });
   expect(await page.evaluate(() => window.__bt?.error ?? null)).toBeNull();
 }
@@ -95,7 +95,7 @@ test("the 10-minute check runs to the end (shortened here) and reports thermals"
 
 test("the production build hides the HUD and still renders", async ({ page }) => {
   const errors = watchErrors(page);
-  await page.goto("http://127.0.0.1:4173/?tier=low");
+  await page.goto("http://127.0.0.1:4191/?stress=1&tier=low");
   await page.waitForFunction(() => window.__bt?.ready || window.__bt?.error, null, { timeout: 60_000 });
   await page.waitForTimeout(1000);
   await expect(page.locator("#bt-hud")).toHaveCount(0);
