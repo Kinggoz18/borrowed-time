@@ -51,9 +51,10 @@ export async function playAll(entry, runs, seasons) {
   await Promise.all(Array.from({ length: limit }, worker));
   return files;
 }
-export async function report(entry, files) {
+export async function report(entry, files, json = false) {
   return new Promise((resolve) => {
-    const p = spawn(process.execPath, [entry, "report", ...files], { stdio: ["ignore", "pipe", "inherit"] });
+    const env = json ? { ...process.env, BT_REPORT_JSON: "1" } : process.env;
+    const p = spawn(process.execPath, [entry, "report", ...files], { stdio: ["ignore", "pipe", "inherit"], env });
     let s = "";
     p.stdout.on("data", (d) => (s += d));
     p.on("close", (code) => resolve({ code, text: s }));

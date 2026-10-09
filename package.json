@@ -16,7 +16,8 @@
     "test:e2e": "playwright test",
     "ci": "bash scripts/ci.sh",
     "standins": "node scripts/make-standins.mjs",
-    "sim": "node scripts/sim.mjs"
+    "sim": "node scripts/sim.mjs",
+    "test:gates": "vitest run --config vitest.gates.config.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

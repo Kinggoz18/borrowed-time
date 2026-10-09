@@ -2,6 +2,7 @@
  * Headless sim runner entry (Node, no rendering). Bundled by scripts/sim.mjs.
  *   runs <strategy> <seedFrom> <seedTo> <seasons>   prints a JSON array of run summaries
  *   report <file.json>...                            prints the gate report, exit 1 on a failed gate
+ *                                                    (as JSON when BT_REPORT_JSON=1)
  */
 import { readFileSync } from "node:fs";
 import type { StrategyName } from "../src/core/bots";
@@ -25,7 +26,8 @@ if (cmd === "runs") {
   const all = args.flatMap((f) => JSON.parse(readFileSync(f, "utf8")) as RunSummary[]);
   const seasons = all[0]?.seasons.length ?? 0;
   const rep = judge(all, seasons);
-  console.log(formatReport(rep));
+  if (process.env.BT_REPORT_JSON) process.stdout.write(JSON.stringify(rep));
+  else console.log(formatReport(rep));
   process.exitCode = rep.gates.every((g) => g.pass) ? 0 : 1;
 } else {
   console.error("usage: runs <strategy> <from> <to> <seasons> | report <files>");

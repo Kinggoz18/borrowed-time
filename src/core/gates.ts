@@ -61,6 +61,30 @@ const pq = (a: number[], p: number) => {
   return b[Math.min(b.length - 1, Math.floor(p * b.length))];
 };
 
+/** Every gate the judge reports, in order, with a short title (docs/SIM_GATES.md). */
+const TIER_NAMES = ["Colony", "Village", "Town", "City"];
+export const GATE_KINDS: Record<string, string> = {
+  G1: "season-win band",
+  G2: "no dominant strategy",
+  G3: "borrowing matters",
+  G4: "greed loses",
+  G5: "smooth levelling",
+  G6: "breathers",
+  G7: "income keeps rising",
+  G8: "max days without an advancement",
+  G9: "player-time seasons per tier",
+};
+export const GATE_IDS: string[] = [
+  ...TIER_NAMES.flatMap((T) => [`G1-${T}`, `G2-${T}`, `G3-${T}`]),
+  "G4-borrowMax",
+  "G4-reckless",
+  "G5",
+  "G6",
+  ...TIER_NAMES.flatMap((T) => [`G7-${T}`, `G8-${T}`]),
+  ...TIER_NAMES.slice(0, 3).map((T) => `G9-${T}`),
+];
+export const gateTitle = (id: string): string => `${id} ${GATE_KINDS[id.slice(0, 2)]}`;
+
 export function judge(runs: RunSummary[], seasonsPerRun: number): Report {
   const RUNS = new Set(runs.map((r) => r.seed)).size;
   const table = {} as Record<StrategyName, TierStat[]>;
