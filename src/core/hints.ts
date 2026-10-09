@@ -1,7 +1,7 @@
 /**
  * Dusk hints (FINAL_PLAN_BT.md §3 "Raids are a surprise"): the kind of night and a rough band
- * measured against your defence right now, never a number. Presentation only: reads the state,
- * never rolls the island's RNG, so showing a hint cannot change the game.
+ * measured against your defence right now. Presentation only: reads the state, never rolls the
+ * island's RNG, so showing a hint cannot change the game.
  */
 import * as E from "./engine";
 import { dayKind } from "./rules";
@@ -17,12 +17,94 @@ export interface DuskHint {
   range: [number, number] | null;
 }
 
-const LINES: Record<Exclude<HintKind, "quiet">, Record<Band, string>> = {
-  skiffs: { light: "A few oars, far out.", even: "Gulls gone quiet. Light boats.", heavy: "Quick oars, lots of them. They're making good time." },
-  longboats: { light: "One heavy hull, low in the water.", even: "Gulls gone quiet. Many oars.", heavy: "Drums on the water. Too many oars to count." },
-  longDusk: { light: "The dusk is thin tonight.", even: "The light is leaving early.", heavy: "Every clock on the island has stopped." },
+/** Four or five short lines per kind and band, rotated by season and day. */
+export const LINES: Record<Exclude<HintKind, "quiet">, Record<Band, readonly string[]>> = {
+  skiffs: {
+    light: [
+      "A few oars, far out.",
+      "Thin wakes. Not many.",
+      "One lamp on the water, then gone.",
+      "A small sail, grey as the shore.",
+      "Someone rowing, slowly, a long way off.",
+    ],
+    even: [
+      "Gulls gone quiet. Light boats.",
+      "Quick hulls, close enough to count.",
+      "Oars in time. They're not lost.",
+      "Grey sails, low, coming in.",
+      "Light boats. The watch is awake.",
+    ],
+    heavy: [
+      "Quick oars, lots of them. They're making good time.",
+      "The water is busy. Too many small hulls.",
+      "Little hulls in a line. They know the grey shore.",
+      "Oars like rain. Light boats, too many.",
+      "The Late in little boats, and plenty of them.",
+    ],
+  },
+  longboats: {
+    light: [
+      "One heavy hull, low in the water.",
+      "A single drum, far off.",
+      "One long boat. It isn't hurrying.",
+      "A deep hull on a quiet sea.",
+      "Something heavy, still a way out.",
+    ],
+    even: [
+      "Gulls gone quiet. Many oars.",
+      "Long boats. You can hear the timber.",
+      "Heavy hulls, keeping time.",
+      "The kind that knock walls, not just purses.",
+      "Oars and a low sail. They mean to land.",
+    ],
+    heavy: [
+      "Drums on the water. Too many oars to count.",
+      "The big boats are full. The drums agree.",
+      "Longboats, packed. They've done this before.",
+      "A wall of hulls. The dusk is loud.",
+      "Heavy timber, many oars, no song we like.",
+    ],
+  },
+  longDusk: {
+    light: [
+      "The dusk is thin tonight.",
+      "A long shadow, but a short one as these go.",
+      "The light is leaving, not all at once.",
+      "The season's end feels light. Don't trust that.",
+      "A pale Long Dusk. It still has a name.",
+    ],
+    even: [
+      "The light is leaving early.",
+      "Clocks slow. The sea is holding its breath.",
+      "The Long Dusk is the size of a usual debt.",
+      "The shadow on the water is ours, more or less.",
+      "Evening came in a hurry. The usual hurry.",
+    ],
+    heavy: [
+      "Every clock on the island has stopped.",
+      "The dusk is as tall as what we owe.",
+      "No birds. No bells. The sea is standing up.",
+      "The Long Dusk has learned our names.",
+      "The shadow doesn't end at the shore.",
+    ],
+  },
 };
-const QUIET = ["Calm sea.", "Calm sea. Nothing out there but tomorrow."];
+
+export const QUIET: readonly string[] = [
+  "Calm sea.",
+  "Calm sea. Nothing out there but tomorrow.",
+  "The horizon is empty. For now.",
+  "No oars. The gulls are still talking.",
+  "A quiet night. The watch can sit.",
+];
+
+/** Pick a line from a bank using season and day only — never the island RNG. */
+export function pickLine(lines: readonly string[], season: number, day: number): string {
+  const n = lines.length;
+  if (!n) return "";
+  const i = ((season * 3 + day * 7) % n + n) % n;
+  return lines[i]!;
+}
 
 /** light < 70% of your defence, even 70–110%, heavy > 110%. */
 export function bandOf(strength: number, defence: number): Band {
@@ -32,10 +114,10 @@ export function bandOf(strength: number, defence: number): Band {
 
 export function duskHint(st: IslandState): DuskHint {
   const k = dayKind(st.day);
-  if (k === "quiet") return { kind: "quiet", band: null, line: QUIET[(st.season + st.day) % 2], range: null };
+  if (k === "quiet") return { kind: "quiet", band: null, line: pickLine(QUIET, st.season, st.day), range: null };
   const kind: HintKind = k === "boss" ? "longDusk" : (st.season * 7 + st.day) % 3 === 0 ? "longboats" : "skiffs";
   const n = E.nominal(st);
   const band = bandOf(n, E.defence(st));
   const obs = E.hasB(st, "observatory");
-  return { kind, band, line: LINES[kind][band], range: obs ? [Math.round(n * 0.9), Math.round(n * 1.1)] : null };
+  return { kind, band, line: pickLine(LINES[kind][band], st.season, st.day), range: obs ? [Math.round(n * 0.9), Math.round(n * 1.1)] : null };
 }
