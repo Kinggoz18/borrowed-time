@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "ci": "bash scripts/ci.sh"
+    "ci": "bash scripts/ci.sh",
+    "standins": "node scripts/make-standins.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

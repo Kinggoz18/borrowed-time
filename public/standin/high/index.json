@@ -1,0 +1,23 @@
+{
+ "standin": true,
+ "scale": 1,
+ "atlases": {
+  "buildings-city": [
+   "buildings-city-0.json",
+   "buildings-city-1.json"
+  ],
+  "buildings-town": [
+   "buildings-town-0.json"
+  ],
+  "terrain": [
+   "terrain-0.json"
+  ],
+  "units": [
+   "units-0.json"
+  ],
+  "fx": [
+   "fx-0.json"
+  ]
+ },
+ "grain": "grain.png"
+}
