@@ -9,7 +9,7 @@
     "build:gate": "tsc --noEmit && vite build --mode gate",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
-    "apk:gate": "npm run build:gate && npx cap sync android && cd android && ./gradlew assembleDebug",
+    "apk:gate": "bash scripts/apk.sh gate",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -17,7 +17,8 @@
     "ci": "bash scripts/ci.sh",
     "standins": "node scripts/make-standins.mjs",
     "sim": "node scripts/sim.mjs",
-    "test:gates": "vitest run --config vitest.gates.config.ts"
+    "test:gates": "vitest run --config vitest.gates.config.ts",
+    "apk:play": "bash scripts/apk.sh play"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
