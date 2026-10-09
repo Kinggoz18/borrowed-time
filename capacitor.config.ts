@@ -5,6 +5,7 @@ const config: CapacitorConfig = {
   appName: "Borrowed Time",
   webDir: "dist",
   backgroundColor: "#5e9a98",
+  // Landscape only: locked in android/app/src/main/AndroidManifest.xml (screenOrientation="sensorLandscape").
   android: { allowMixedContent: false },
   plugins: {
     SplashScreen: {

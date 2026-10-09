@@ -24,6 +24,7 @@ export interface GameHooks {
   stats: () => ReturnType<IslandView["stats"]>;
   lotToScreen: (key: string) => { x: number; y: number };
   zoomToLots: () => void;
+  showLot: (key: string) => void;
   fps: () => number;
   error?: string;
 }
@@ -110,6 +111,7 @@ export async function bootGame(): Promise<void> {
     stats: () => view.stats(),
     lotToScreen: (k) => view.lotToScreen(k),
     zoomToLots: () => view.zoomToLots(),
+    showLot: (k) => view.showLot(k),
     fps: () => Math.round(fps),
   };
   (window as unknown as { __bt: GameHooks }).__bt = hooks;

@@ -34,6 +34,12 @@ interface Tween {
 const JOB_OF: Record<string, Job> = { field: "field", cottage: "field", workshop: "clockworks", tower: "watch", bank: "trade", trade: "trade", lantern: "clockworks" };
 const sleep = (view: IslandView, s: number) => new Promise<void>((res) => view.tween(s, () => undefined, res));
 
+/** Landscape screen furniture (ui.css): the HUD strip on top and the button rail on the right. */
+const HUD_TOP = 64;
+const RAIL_RIGHT = 104;
+/** Gameplay camera starts this much closer than "whole island fits" (owner: too far out). */
+export const PLAY_ZOOM = 1.6;
+
 export class IslandView {
   readonly world = new Container();
   private ground = new Container();
@@ -205,23 +211,38 @@ export class IslandView {
       this.grain.width = sw;
       this.grain.height = sh;
     }
-    this.fitZoom = Math.min(sw / b.w, (sh * 0.7) / b.h);
+    const a = this.area();
+    this.fitZoom = Math.min(a.w / b.w, a.h / b.h);
     if (reset || this.zoom < this.fitZoom) {
-      this.zoom = this.fitZoom;
+      // Play starts zoomed in so buildings and people read; pinch out to see the whole island.
+      this.zoom = this.fitZoom * PLAY_ZOOM;
       this.cx = b.x + b.w / 2;
       this.cy = b.y + b.h / 2;
     }
     this.apply();
   }
+  /** The part of the screen the island owns: below the top HUD, left of the button rail. */
+  private area(): { x: number; y: number; w: number; h: number } {
+    const { width, height } = this.app.screen;
+    return { x: 0, y: HUD_TOP, w: Math.max(1, width - RAIL_RIGHT), h: Math.max(1, height - HUD_TOP) };
+  }
+  /** Centre the camera on a lot (used by tests and to frame the next thing to do). */
+  showLot(key: string): void {
+    const [i, j] = kij(key);
+    const p = cellFront(i, j);
+    this.cx = p.x;
+    this.cy = p.y - TH / 2;
+    this.apply();
+  }
   private apply(): void {
-    const sw = this.app.screen.width, sh = this.app.screen.height;
     const b = this.layout.bounds;
     this.zoom = Math.max(this.fitZoom, Math.min(this.fitZoom * 5, this.zoom));
     // keep the island on screen
     this.cx = Math.max(b.x, Math.min(b.x + b.w, this.cx));
     this.cy = Math.max(b.y, Math.min(b.y + b.h, this.cy));
     this.world.scale.set(this.zoom);
-    this.world.position.set(sw / 2 - this.cx * this.zoom, sh * 0.47 - this.cy * this.zoom);
+    const a = this.area();
+    this.world.position.set(a.x + a.w / 2 - this.cx * this.zoom, a.y + a.h / 2 - this.cy * this.zoom);
   }
   zoomAt(sx: number, sy: number, k: number): void {
     const wx = (sx - this.world.x) / this.zoom, wy = (sy - this.world.y) / this.zoom;
@@ -296,7 +317,7 @@ export class IslandView {
     return { x: this.world.x + p.x * this.zoom, y: this.world.y + (p.y - TH / 2) * this.zoom };
   }
   zoomToLots(): void {
-    this.zoom = Math.max(this.zoom, 48 / TW);
+    this.zoom = Math.max(this.zoom, 56 / TW);
     this.apply();
   }
   highlight(key: string | null): void {

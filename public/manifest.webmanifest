@@ -1,0 +1,9 @@
+{
+  "name": "Borrowed Time",
+  "short_name": "Borrowed Time",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#5e9a98",
+  "theme_color": "#5e9a98",
+  "start_url": "."
+}

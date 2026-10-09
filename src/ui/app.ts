@@ -60,6 +60,8 @@ export class GameUI {
   ) {
     this.root = h("div", { id: "ui" });
     host.appendChild(this.root);
+    // The game is played sideways; Android locks it, a browser held upright gets this note.
+    host.appendChild(h("div", { class: "rotate", role: "alert" }, icon("rotate"), h("p", {}, "Turn your phone sideways to play.")));
     d.view.onTapLot = (k) => this.tapLot(k);
     d.view.onTapTent = () => this.openClockkeeper();
   }
@@ -152,25 +154,25 @@ export class GameUI {
     const near = owed && st.debt >= 0.8 * lim;
     const nx = TIERS[st.tier + 1];
     this.hud.replaceChildren(
+      h("div", { class: "chip hours", "data-hud": "hours", title: "Hours" }, icon("hours"), h("b", {}, fmt(st.hours)), h("small", {}, "Hours")),
+      h(
+        "button",
+        { class: "chip debt " + (owed ? (near ? "owed near" : "owed") : "safe"), "data-hud": "debt", onclick: () => this.openClockkeeper() },
+        icon(owed ? "owed" : "safe"),
+        owed ? h("b", {}, `${fmt(st.debt)}/${fmt(lim)}`) : h("b", {}, "Safe"),
+        h("small", {}, owed ? (near ? "Near limit" : "Owed") : "Nothing owed"),
+      ),
       h(
         "div",
-        { class: "hud-row" },
-        h("div", { class: "chip hours", "data-hud": "hours", title: "Hours" }, icon("hours"), h("b", {}, fmt(st.hours)), h("small", {}, "Hours")),
+        { class: "daybox", title: `Season ${st.season}` },
         h(
-          "button",
-          { class: "chip debt " + (owed ? (near ? "owed near" : "owed") : "safe"), "data-hud": "debt", onclick: () => this.openClockkeeper() },
-          icon(owed ? "owed" : "safe"),
-          owed ? h("b", {}, `${fmt(st.debt)}/${fmt(lim)}`) : h("b", {}, "Safe"),
-          h("small", {}, owed ? (near ? "Near limit" : "Owed") : "Nothing owed"),
+          "div",
+          { class: "hud-row day" },
+          icon(st.phase === "day" ? "sun" : "moon"),
+          h("span", { "data-hud": "day" }, `Day ${st.day}/6 · `, h("b", {}, st.phase === "day" ? `${left}h light` : st.phase === "dusk" ? "Dusk" : "Night")),
         ),
+        h("span", { class: "lightbar", "aria-hidden": "true" }, h("i", {})),
       ),
-      h(
-        "div",
-        { class: "hud-row day" },
-        icon(st.phase === "day" ? "sun" : "moon"),
-        h("span", { "data-hud": "day" }, `Season ${st.season} · Day ${st.day}/6 · `, h("b", {}, st.phase === "day" ? `${left}h light` : st.phase === "dusk" ? "Dusk" : "Night")),
-      ),
-      h("span", { class: "lightbar", "aria-hidden": "true" }, h("i", {})),
       nx
         ? h(
             "button",
