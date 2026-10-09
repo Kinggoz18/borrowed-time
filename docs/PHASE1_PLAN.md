@@ -2,6 +2,8 @@
 
 **Scope change (owner, Oct 9 2026):** skip the grey-box stage. Phase 1 goes straight to a build the owner can install and play on his phone, drawn in the Village-era look from `ART_BIBLE.md`. The sim core, the section 6 gates, save/resume, the event log and determinism stay exactly as planned. All art is still a **procedural stand-in** (drawn by code in the bible's style), never final art (`ART_BIBLE.md` §13).
 
+**Owner updates (Oct 9 2026, later):** landscape only (#15); stress/perf testing paused, opt-in with `RUN_STRESS=1` (#16); closer default camera and stronger building silhouettes (#17); rewarded video is the only ad format (#14).
+
 Sources: `FINAL_PLAN_BT.md` §2–6, 11, 12 and the Phase 1 row; `DESIGN_V2.md`; `LORE.md`; `ART_BIBLE.md`; the v2 prototype (`prototype.html` core block and `sim-test.js` with `RULES=build`), which is the rules reference.
 
 ## What "done" means
@@ -10,7 +12,7 @@ Sources: `FINAL_PLAN_BT.md` §2–6, 11, 12 and the Phase 1 row; `DESIGN_V2.md`;
 3. `IslandSnapshot` (versioned), `resolveRaid(snapshot, strength, seed)`, a seeded RNG with serialisable state, a command log with sequence numbers, and an append-only event log. A determinism test: same seed + command log ⇒ the same snapshot hash.
 4. A headless sim runner (`npm run sim`) that prints the same tables as `sim-test.js`.
 5. A playable build: home → first-run flow → empty land → palisade ring → build, upgrade, borrow, repay → dusk decisions → raids → seizure → level-ups → tier-up to Village with the ring re-fit and the Village look. Real screens: home, play, build, building, Clockkeeper (borrow/repay), dusk decision, raid result, morning report, seizure, tier-up, settings. Sound hooks. Save and resume mid-day.
-6. Playwright e2e at 360×800 and 540×960, plus screenshots for review.
+6. Playwright e2e in landscape at 800×360 and 960×540, plus screenshots for review. (Was portrait; changed by the owner, `DECISIONS.md` #15.)
 7. A Mac script that builds and installs the APK (`npm run apk:play`), next to the Phase 0 `apk:gate`.
 
 ## Ordered chunks (each: tests first where it applies, then one plain commit)

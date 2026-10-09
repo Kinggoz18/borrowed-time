@@ -30,7 +30,8 @@ npm run ci          # lint, typecheck, unit tests, sim gates, production build, 
 npm test            # Vitest: rules, parity with the prototype, determinism, save, layout, session
 npm run test:gates  # the 27 §6 sim gates (about 2 minutes on 8 cores)
 npm run sim         # the full sim report
-npm run test:e2e    # Playwright at 360x800 and 540x960 (needs `npm run build` first)
+npm run test:e2e    # Playwright in landscape at 800x360 and 960x540 (needs `npm run build` first)
+RUN_STRESS=1 npm run ci   # also runs the paused stress scene and perf tests
 ```
 The e2e runs are software-rendered (headless Chromium, SwiftShader); their fps is not a phone result. Screenshots go to `.artifacts/<BT_RUN>/e2e/`.
 
