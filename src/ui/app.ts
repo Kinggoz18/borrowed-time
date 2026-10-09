@@ -52,6 +52,7 @@ export class GameUI {
   private selected: string | null = null;
   private hudCache = "";
   private off: (() => void) | null = null;
+  private inDusk = false;
 
   constructor(
     host: HTMLElement,
@@ -160,14 +161,14 @@ export class GameUI {
           { class: "chip debt " + (owed ? (near ? "owed near" : "owed") : "safe"), "data-hud": "debt", onclick: () => this.openClockkeeper() },
           icon(owed ? "owed" : "safe"),
           owed ? h("b", {}, `${fmt(st.debt)}/${fmt(lim)}`) : h("b", {}, "Safe"),
-          h("small", {}, owed ? (near ? "Owed · near limit" : "Owed") : "Nothing owed"),
+          h("small", {}, owed ? (near ? "Near limit" : "Owed") : "Nothing owed"),
         ),
       ),
       h(
         "div",
         { class: "hud-row day" },
         icon(st.phase === "day" ? "sun" : "moon"),
-        h("span", { "data-hud": "day" }, `Season ${st.season} · Day ${st.day} of 6 · `, h("b", {}, st.phase === "day" ? `${left}h light left` : st.phase === "dusk" ? "Dusk" : "Night")),
+        h("span", { "data-hud": "day" }, `Season ${st.season} · Day ${st.day}/6 · `, h("b", {}, st.phase === "day" ? `${left}h light` : st.phase === "dusk" ? "Dusk" : "Night")),
       ),
       h("span", { class: "lightbar", "aria-hidden": "true" }, h("i", {})),
       nx
@@ -177,9 +178,8 @@ export class GameUI {
             icon("star"),
             h("span", {}, `${nx.name}:`),
             req(g.level, `Lv ${st.L}/${nx.lvl}`),
-            req(g.people, `${st.pop}/${nx.pop}`, "people"),
-            !g.kept && req(false, "Over limit"),
-            !g.seal && req(false, "Seal"),
+            req(g.people, `${st.pop}/${nx.pop}`, "ppl"),
+            !g.kept ? req(false, "Over limit") : !g.seal ? req(false, "Seal") : null,
           )
         : h("div", { class: "chip charter" }, icon("star"), h("span", {}, `${TIERS[st.tier].name}`)),
     );
@@ -490,11 +490,14 @@ export class GameUI {
 
   private async dusk(): Promise<void> {
     const s = this.session!;
-    if (this.root.querySelector('[data-card="dusk"]')) return;
+    if (this.inDusk) return;
+    this.inDusk = true;
     this.closeSheet();
     s.paused = true;
     s.speed = 1;
-    this.root.querySelector('[data-act="rest"]')?.classList.remove("on");
+    const rest = this.root.querySelector('[data-act="rest"]');
+    rest?.classList.remove("on");
+    rest?.setAttribute("aria-pressed", "false");
     this.d.view.sync(s.state, { dusk: true });
     this.cue("dusk", "medium");
     const st = s.state;
@@ -554,6 +557,7 @@ export class GameUI {
       await this.card({ cls: r.won ? "held" : "lost", kicker: r.boss ? "The Long Dusk" : "Tonight", title: r.won ? (r.D - r.S < r.S * 0.08 ? "In the nick of time!" : "Held!") : "They broke through.", body: lines, buttons: [{ id: "sleep", label: "Sleep", kind: "primary", icon: "moon" }] });
     }
     await this.sleep();
+    this.inDusk = false;
   }
 
   private async sleep(): Promise<void> {

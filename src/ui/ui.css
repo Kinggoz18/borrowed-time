@@ -45,10 +45,11 @@ button { font: inherit; color: inherit; }
 .hud { position: absolute; top: 0; left: 0; right: 64px; padding: max(8px, env(safe-area-inset-top)) 8px 0; display: grid; gap: 6px; pointer-events: none; }
 .hud-row { display: flex; gap: 6px; align-items: stretch; }
 .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 48px; padding: 4px 10px; border: 2.5px solid var(--ink); border-radius: 12px; background: var(--paper); box-shadow: 0 2px 0 var(--ink); }
-.chip b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.chip b { font-size: 19px; font-variant-numeric: tabular-nums; }
 .chip small { font-size: 12px; color: var(--ink-dim); line-height: 1.1; }
 .chip.hours { flex: 0 0 auto; }
-.chip.debt { flex: 1; text-align: left; cursor: pointer; }
+.chip.debt { flex: 1; min-width: 0; text-align: left; cursor: pointer; overflow: hidden; }
+.chip.debt small, .chip.hours small { white-space: nowrap; }
 .chip.debt.owed { background: var(--debt-bg); color: #6e2f14; }
 .chip.debt.owed small { color: #6e2f14; }
 .chip.debt.near { animation: pulse 1.2s ease-in-out infinite; border-color: var(--debt); }
@@ -57,7 +58,7 @@ button { font: inherit; color: inherit; }
 .hud-row.day { align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--paper); text-shadow: 0 1px 2px var(--ink), 0 0 1px var(--ink); padding: 0 4px; }
 .lightbar { display: block; height: 8px; margin: -2px 4px 0; border: 2px solid var(--ink); border-radius: 6px; background: rgba(61,52,40,0.4); overflow: hidden; }
 .lightbar i { display: block; height: 100%; width: calc(var(--light, 1) * 100%); background: var(--gold); }
-.chip.charter { justify-self: start; font-size: 14px; cursor: pointer; white-space: nowrap; min-height: 48px; gap: 8px; }
+.chip.charter { justify-self: start; max-width: 100%; font-size: 14px; cursor: pointer; white-space: nowrap; min-height: 48px; gap: 8px; overflow: hidden; }
 .req { display: inline-flex; align-items: center; gap: 2px; font-weight: 600; color: var(--debt); }
 .req.ok { color: var(--safe); }
 .req .ico { width: 16px; height: 16px; }
@@ -124,6 +125,7 @@ button { font: inherit; color: inherit; }
 
 .card { width: min(420px, 100%); max-height: 100%; overflow-y: auto; background: var(--paper); border: 3px solid var(--ink); border-radius: 18px; box-shadow: 0 6px 0 var(--ink); padding: 18px; display: grid; gap: 8px; animation: rise 0.25s ease-out; }
 @keyframes rise { from { transform: translateY(16px); opacity: 0; } }
+.card p.sub { flex-wrap: nowrap; }
 .card p { margin: 0; font-size: 16px; line-height: 1.35; display: flex; gap: 6px; align-items: flex-start; }
 .card p.quote { display: block; }
 .card .kicker { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-dim); font-weight: 700; }
