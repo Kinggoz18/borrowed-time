@@ -3,10 +3,39 @@
  * (ART_BIBLE.md §9). Each step changes the outline with one idea. Stand-ins, not final art.
  */
 import type { BType } from "../../core/rules";
-import { BLUE_DOOR, DRIFT, GNOMON, INK, SAIL, STRIPE, TARR, kitFor, type Era, type EraKit } from "./palette";
+import { BLUE_DOOR, BRASS_PIN, DRIFT, GNOMON, INK, SAIL, STRIPE, TARR, TEAL, TEAL_DEEP, kitFor, type Era, type EraKit, type Ramp } from "./palette";
 import type { Pen } from "./pen";
 
 const GLASS = "#D8E4E0";
+const BRASS: Ramp = { light: "#D8BE86", base: BRASS_PIN, shade: "#8D7449" };
+const TEALR: Ramp = { light: "#7FB3B1", base: TEAL, shade: TEAL_DEEP };
+
+/**
+ * Each type's signature, drawn over every look so types read apart at phone zoom and on grey
+ * land (owner feedback): brass gear = Clockworks, brass hourglass sign = Hourglass, hearth smoke
+ * = homes, teal pennant = Trade Post, red pennant = Watchtower.
+ */
+function signature(p: Pen, type: BType, stage: number, top: number): void {
+  if (type === "workshop") p.wheel(0.9, 0.55, 12, 9, BRASS, 10);
+  else if (type === "bank") {
+    p.post(0.86, 0.86, 2.5, 18, 1.6, DRIFT.shade);
+    hourglass(p, 0.86, 0.86, 20, 6.5, BRASS.shade);
+  } else if (type === "cottage") {
+    const [x, y] = p.P(0.35, 0.4, top + 6);
+    for (const [dx, dy, r] of [[0, 0, 3.2], [3, -5, 3.8], [1, -11, 4.4]]) {
+      p.c.beginPath();
+      p.c.arc(x + dx * p.s, y + dy * p.s, r * p.s, 0, Math.PI * 2);
+      p.c.fillStyle = "#ECE6DA";
+      p.c.fill();
+      p.c.strokeStyle = INK;
+      p.c.lineWidth = p.line / 3;
+      p.c.stroke();
+    }
+  } else if (type === "trade") p.flag(0.2, 0.25, 14 + stage * 3, 18, TEALR.base, SAIL.base);
+  else if (type === "tower") p.flag(0.5, 0.5, top, 8, STRIPE.base);
+}
+/** Roof top (tile px) of each type's tallest look, for where the signature sits. */
+const TOP: Partial<Record<BType, number[]>> = { cottage: [26, 26, 40, 40], tower: [35, 45, 64, 72] };
 
 function plinth(p: Pen, k: EraKit): void {
   // era-uniform plinth so the lot grid reads (fieldstone rim in Village, driftwood boards in Colony)
@@ -169,6 +198,8 @@ export function drawBuilding(p: Pen, era: Era, type: BType, stage: number): void
   p.shadow(0.2, 0.2, 0.85, 0.85, 20);
   if (list) list[s](p, era === "colony" && !COLONY_LOOKS[type] ? kitFor("village") : k);
   else generic(p, k, s);
+  const top = TOP[type]?.[s] ?? (era === "colony" && type === "cottage" ? 18 : 20);
+  signature(p, type, s, era === "colony" && type === "tower" ? [44, 50][s] : top);
 }
 
 /** The gnomon: older than every era, never re-skinned. */

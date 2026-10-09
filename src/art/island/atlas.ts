@@ -19,6 +19,8 @@ export interface FrameDef {
   ay: number;
   draw: (c: CanvasRenderingContext2D, s: number) => void;
   grey?: boolean;
+  /** buildings on grey land keep more colour than the land itself, so types stay readable */
+  greyAmount?: number;
 }
 export interface AtlasFrame {
   page: number;
@@ -57,7 +59,7 @@ export function frameDefs(era: Era): FrameDef[] {
     for (let st = 0; st < looks; st++)
       for (const grey of [false, true]) {
         const name = buildingFrame(era, type, st, grey);
-        out.push({ name, w: BW, h: BH, ax: BAX, ay: BAY, grey, draw: (c, s) => drawBuilding(pen(c, BAX, BAY, s, seedOf(name)), era, type, st) });
+        out.push({ name, w: BW, h: BH, ax: BAX, ay: BAY, grey, greyAmount: 0.5, draw: (c, s) => drawBuilding(pen(c, BAX, BAY, s, seedOf(name)), era, type, st) });
       }
   out.push({ name: "gnomon", w: BW, h: BH, ax: BAX, ay: BAY, draw: (c, s) => drawGnomon(pen(c, BAX, BAY, s, 3)) });
   out.push({ name: "tent", w: BW, h: BH, ax: BAX, ay: BAY, draw: (c, s) => drawTent(pen(c, BAX, BAY, s, 5)) });
@@ -98,7 +100,7 @@ export function buildAtlas(era: Era, s: number, make: CanvasFactory = domCanvas,
     const cv = make(w, h);
     const c = cv.getContext("2d", { willReadFrequently: !!f.grey })!;
     f.draw(c, s);
-    if (f.grey) greyify(c, w, h, s);
+    if (f.grey) greyify(c, w, h, s, f.greyAmount ?? 0.85, f.greyAmount ? 0.1 : 0.18);
     drawn.set(f.name, cv);
   }
   const packed = packShelves(defs.map((f) => ({ name: f.name, w: Math.ceil(f.w * s), h: Math.ceil(f.h * s) })), maxSize);

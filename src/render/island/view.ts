@@ -101,6 +101,8 @@ export class IslandView {
     } else this.grain.texture = this.tex.grain;
     for (const w of this.walkers) w.sp.destroy();
     this.walkers = [];
+    for (const b of this.boats) b.destroy();
+    this.boats = [];
     for (const s of this.sprites.values()) s.destroy();
     this.sprites.clear();
     this.ground.removeChildren().forEach((c) => c.destroy());
@@ -203,7 +205,7 @@ export class IslandView {
       this.grain.width = sw;
       this.grain.height = sh;
     }
-    this.fitZoom = Math.min(sw / b.w, (sh * 0.78) / b.h);
+    this.fitZoom = Math.min(sw / b.w, (sh * 0.7) / b.h);
     if (reset || this.zoom < this.fitZoom) {
       this.zoom = this.fitZoom;
       this.cx = b.x + b.w / 2;
@@ -280,7 +282,7 @@ export class IslandView {
   tap(sx: number, sy: number): void {
     const key = this.pick(sx, sy);
     if (key === "tent") return this.onTapTent();
-    if (this.lotScreenWidth() < 44) {
+    if (this.lotScreenWidth() < 34) {
       // too small to aim at: zoom toward the tap first (FINAL_PLAN_BT.md §6 tap-to-zoom)
       this.zoomAt(sx, sy, 48 / this.lotScreenWidth());
       return;

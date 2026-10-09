@@ -11,6 +11,8 @@ import { ERA_TYPES, LOOKS_PER_ERA } from "../../art/island/buildings";
 import type { Era } from "../../art/island/palette";
 import type { RingPiece } from "../../art/island/scenery";
 
+/** Buildings draw a little larger than their lot so they read on a phone (owner feedback). */
+export const BUILDING_SCALE = 1.3;
 export const TW = 64;
 export const TH = 32;
 /** Bottom (front) point of cell (i, j)'s diamond. Lots are cells; the gnomon stands on (0, 0). */
@@ -110,7 +112,7 @@ export function layoutIsland(st: IslandState, opts: { dusk?: boolean } = {}): Is
     const p = cellFront(i, j);
     // a 2×2 / 3×3 claim extends behind the owner lot: centre the sprite on the footprint
     const cx = p.x, cy = p.y - ((n - 1) * TH) / 2;
-    things.push({ frame: buildingFrame(era, frameType, stage, grey.has(key)), x: cx, y: cy + ((n - 1) * TH) / 2, z: depth(i, j, 10), key, scale: n });
+    things.push({ frame: buildingFrame(era, frameType, stage, grey.has(key)), x: cx, y: cy + ((n - 1) * TH) / 2, z: depth(i, j, 10), key, scale: n * BUILDING_SCALE });
   }
   const g = cellFront(0, 0);
   things.push({ frame: "gnomon", x: g.x, y: g.y, z: depth(0, 0, 10), key: "0,0" });
@@ -127,10 +129,11 @@ export function layoutIsland(st: IslandState, opts: { dusk?: boolean } = {}): Is
   things.push({ frame: "tent", x: tc.x, y: tc.y, z: depth(r + 2, -r + 1, 10) });
   const top = cellFront(-S, -S), bot = cellFront(S, S), left = cellFront(-S, S), right = cellFront(S, -S);
   const gate = cellFront(r + 1, 0);
-  const F = r + 2;
+  // fit the ring edge to edge: the island fills the phone's width (owner feedback)
+  const F = r + 1;
   const ft = cellFront(-F, -F), fb = cellFront(F, F), fl = cellFront(-F, F), fr = cellFront(F, -F);
   return {
-    fitBounds: { x: fl.x - TW / 2, y: ft.y - TH - 60, w: fr.x - fl.x + TW, h: fb.y - ft.y + TH + 60 },
+    fitBounds: { x: fl.x - TW / 2 + 8, y: ft.y - TH - 50, w: fr.x - fl.x + TW - 16, h: fb.y - ft.y + TH + 50 },
     era,
     r,
     ground,

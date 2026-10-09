@@ -308,20 +308,20 @@ export function drawFx(c: Ctx, w: number, h: number, fx: Fx, s: number): void {
  * Grey land, baked (ART_BIBLE.md D4): desaturate 85%, cool shift, then a 45° ink hatch at 18%
  * clipped to the sprite's own pixels. Never the only signal: the HUD also shows icon and word.
  */
-export function greyify(c: Ctx, w: number, h: number, s: number): void {
+export function greyify(c: Ctx, w: number, h: number, s: number, amount = 0.85, hatch = 0.18): void {
   const img = c.getImageData(0, 0, w, h);
   const d = img.data;
   for (let i = 0; i < d.length; i += 4) {
     const r = d[i], g = d[i + 1], b = d[i + 2];
     const y = 0.299 * r + 0.587 * g + 0.114 * b;
-    d[i] = Math.round(r + (y - r) * 0.85) - 6;
-    d[i + 1] = Math.round(g + (y - g) * 0.85) - 1;
-    d[i + 2] = Math.round(b + (y - b) * 0.85) + 8;
+    d[i] = Math.round(r + (y - r) * amount) - 6 * amount;
+    d[i + 1] = Math.round(g + (y - g) * amount) - amount;
+    d[i + 2] = Math.round(b + (y - b) * amount) + 8 * amount;
   }
   c.putImageData(img, 0, 0);
   c.save();
   c.globalCompositeOperation = "source-atop";
-  c.strokeStyle = "rgba(61,52,40,0.18)";
+  c.strokeStyle = `rgba(61,52,40,${hatch})`;
   c.lineWidth = Math.max(1, s);
   const gap = 5 * s;
   c.beginPath();
