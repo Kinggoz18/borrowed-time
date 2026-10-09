@@ -217,7 +217,29 @@ export function drawBoat(c: Ctx, ax: number, ay: number, s: number, sail: boolea
 /** Effects: flat painted shapes, no gradients except the soft glows (§7). */
 export type Fx = "fire" | "smoke" | "glow" | "spark" | "foam" | "dust";
 export const FX: Fx[] = ["fire", "smoke", "glow", "spark", "foam", "dust"];
-export function drawFx(c: Ctx, w: number, h: number, fx: Fx, s: number): void {
+export const FLAG_FRAMES = 3;
+export function drawFlagFrame(c: Ctx, w: number, h: number, s: number, frame: number): void {
+  const L = s >= 2 ? 2 : 1.5;
+  c.strokeStyle = INK;
+  c.lineWidth = L;
+  c.lineCap = "round";
+  c.beginPath();
+  c.moveTo(1.5 * s, h - 1 * s);
+  c.lineTo(1.5 * s, 1 * s);
+  c.stroke();
+  const wave = (frame % 3) * 1.4 * s;
+  c.beginPath();
+  c.moveTo(1.5 * s, 1.4 * s);
+  c.quadraticCurveTo(w * 0.55 + wave, 2.2 * s, w - 1.5 * s, 3.2 * s + wave * 0.2);
+  c.quadraticCurveTo(w * 0.5 + wave * 0.4, 6.5 * s, 1.5 * s, 7.2 * s);
+  c.closePath();
+  c.fillStyle = "#B8633F";
+  c.fill();
+  c.stroke();
+  c.fillStyle = SAIL.base;
+  c.fillRect(2.2 * s, 2.8 * s, 1.2 * s, 3.2 * s);
+}
+export function drawFx(c: Ctx, w: number, h: number, fx: Fx, s: number, variant = 0): void {
   const cx = w / 2, cy = h / 2;
   c.lineJoin = "round";
   if (fx === "fire") {
@@ -240,7 +262,8 @@ export function drawFx(c: Ctx, w: number, h: number, fx: Fx, s: number): void {
     c.fillStyle = fx === "smoke" ? "#ECE6DA" : "#D9C9A0";
     c.strokeStyle = "rgba(61,52,40,0.5)";
     c.lineWidth = s;
-    for (const [dx, dy, r] of [[-0.18, 0.08, 0.3], [0.16, 0.1, 0.28], [0, -0.12, 0.32]] as const) {
+    const sh = (variant % 3) * 0.06;
+    for (const [dx, dy, r] of [[-0.18 + sh, 0.08, 0.3], [0.16, 0.1 - sh, 0.28], [0 - sh, -0.12, 0.32]] as const) {
       c.beginPath();
       c.arc(cx + dx * w, cy + dy * h, r * w, 0, Math.PI * 2);
       c.fill();

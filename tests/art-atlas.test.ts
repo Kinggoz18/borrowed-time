@@ -17,12 +17,12 @@ describe("island atlas catalogue", () => {
       expect(names).toContain(groundFrame(era, "lot", 0, true));
       expect(names).toContain(groundFrame(era, "plot", 0));
       expect(names).toContain(groundFrame(era, "plot", 0, true));
-      expect(names).toEqual(expect.arrayContaining(["gnomon", "tent", "boat", "fx/fire", "p/raider/1", "ring/3/segA", "gate/0/B/1"]));
+      expect(names).toEqual(expect.arrayContaining(["gnomon", "tent", "boat", "fx/fire", "p/raider/walk/se/1", "p/nell/idle/nw/0", "fx/flag/0", "ring/3/segA", "gate/0/B/1"]));
     });
-    it(`${era}: fits one 2048 page at the high tier (s = 2)`, () => {
+    it(`${era}: high-tier frames pack into 2048 pages (Village may use two for walk cycles)`, () => {
       const packed = packShelves(defs.map((d) => ({ name: d.name, w: Math.ceil(d.w * 2), h: Math.ceil(d.h * 2) })), 2048);
-      expect(packed.pages.length).toBe(1);
-      expect(Math.max(packed.pages[0].w, packed.pages[0].h)).toBeLessThanOrEqual(2048);
+      expect(packed.pages.length).toBeLessThanOrEqual(era === "village" ? 2 : 1);
+      for (const p of packed.pages) expect(Math.max(p.w, p.h)).toBeLessThanOrEqual(2048);
     });
   }
   it("Village has four looks per type and the Colony two (ART_BIBLE.md §9)", () => {

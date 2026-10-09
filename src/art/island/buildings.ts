@@ -20,18 +20,7 @@ function signature(p: Pen, type: BType, stage: number, top: number): void {
   else if (type === "bank") {
     p.post(0.86, 0.86, 2.5, 18, 1.6, DRIFT.shade);
     hourglass(p, 0.86, 0.86, 20, 6.5, BRASS.shade);
-  } else if (type === "cottage") {
-    const [x, y] = p.P(0.35, 0.4, top + 6);
-    for (const [dx, dy, r] of [[0, 0, 3.2], [3, -5, 3.8], [1, -11, 4.4]]) {
-      p.c.beginPath();
-      p.c.arc(x + dx * p.s, y + dy * p.s, r * p.s, 0, Math.PI * 2);
-      p.c.fillStyle = "#ECE6DA";
-      p.c.fill();
-      p.c.strokeStyle = INK;
-      p.c.lineWidth = p.line / 3;
-      p.c.stroke();
-    }
-  } else if (type === "trade") p.flag(0.2, 0.25, 14 + stage * 3, 18, TEALR.base, SAIL.base);
+  }   else if (type === "trade") p.flag(0.2, 0.25, 14 + stage * 3, 18, TEALR.base, SAIL.base);
   else if (type === "tower") p.flag(0.5, 0.5, top, 8, STRIPE.base);
 }
 /** Roof top (tile px) of each type's tallest look, for where the signature sits. */

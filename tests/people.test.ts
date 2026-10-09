@@ -14,8 +14,9 @@ describe("people models", () => {
     expect(NOTABLE_JOBS).toEqual(["hesper", "nell", "ada", "tobias", "noon"]);
     const names = frameDefs("colony").map((d) => d.name);
     for (const job of JOBS) {
-      expect(names).toContain(`p/${job}/0`);
-      expect(names).toContain(`p/${job}/1`);
+      expect(names).toContain(personFrameName(job, "walk", "se", 0));
+      expect(names).toContain(personFrameName(job, "idle", "nw", 1));
+      expect(names).toContain(personFrameName(job, "work", "sw", 1));
       expect(personFrame(job).ay).toBeGreaterThan(personFrame(job).h / 2);
     }
   });

@@ -1,14 +1,14 @@
 /**
  * Builds the island atlas at boot from the procedural stand-ins: every frame drawn once into its
  * own canvas, shelf-packed into pages of at most 2048² (FINAL_PLAN_BT.md §5 atlas discipline).
- * One atlas per era and scale; the Village and Colony sets each fit one page at s = 2.
+ * One atlas per era and scale. Colony fits one 2048 page at s = 2; Village may use two (walk cycles).
  * Pure Canvas 2D: the renderer turns the pages into GPU textures.
  */
 import { packShelves } from "../pack";
 import { drawBuilding, drawGnomon, drawTent, ERA_TYPES, LOOKS_PER_ERA } from "./buildings";
 import type { Era } from "./palette";
 import { Pen } from "./pen";
-import { drawBoat, drawFx, drawGrain, drawGate, drawGround, drawPerson, personFrame, drawRing, FX, greyify, GROUND_KINDS, GROUND_VARIANTS, JOBS, RING_PIECES, RING_STAGES } from "./scenery";
+import { ANIM_FRAMES, FLAG_FRAMES, JOBS, PERSON_ANIMS, PERSON_VIEWS, drawBoat, drawFlagFrame, drawFx, drawGrain, drawGate, drawGround, drawPerson, personFrame, personFrameName, drawRing, FX, greyify, GROUND_KINDS, GROUND_VARIANTS, RING_PIECES, RING_STAGES } from "./scenery";
 
 export interface FrameDef {
   name: string;
@@ -74,16 +74,22 @@ export function frameDefs(era: Era): FrameDef[] {
         out.push({ name: `gate/${st}/${along ? "A" : "B"}/${shut ? 1 : 0}`, w: 64, h: 64, ax: 32, ay: 50, draw: (c, s) => drawGate(pen(c, 32, 50, s, st + 19), st, along, shut) });
   }
   for (const job of JOBS)
-    for (const f of [0, 1]) {
-      const pf = personFrame(job);
-      out.push({ name: `p/${job}/${f}`, ...pf, draw: (c, s) => drawPerson(c, pf.ax * s, pf.ay * s, s, job, f) });
-    }
+    for (const anim of PERSON_ANIMS)
+      for (const view of PERSON_VIEWS)
+        for (let f = 0; f < ANIM_FRAMES[anim]; f++) {
+          const pf = personFrame(job);
+          out.push({ name: personFrameName(job, anim, view, f), ...pf, draw: (c, s) => drawPerson(c, pf.ax * s, pf.ay * s, s, job, f, anim, view) });
+        }
   out.push({ name: "boat", w: 56, h: 50, ax: 28, ay: 44, draw: (c, s) => drawBoat(c, 28 * s, 44 * s, s, true) });
   out.push({ name: "boat/beached", w: 56, h: 50, ax: 28, ay: 44, draw: (c, s) => drawBoat(c, 28 * s, 44 * s, s, false) });
   const fxSize: Record<string, [number, number]> = { fire: [16, 24], smoke: [24, 24], glow: [64, 64], spark: [6, 12], foam: [32, 12], dust: [24, 24] };
   for (const fx of FX) {
     const [w, h] = fxSize[fx];
     out.push({ name: `fx/${fx}`, w, h, ax: w / 2, ay: h / 2, draw: (c, s) => drawFx(c, w * s, h * s, fx, s) });
+  }
+  for (let f = 0; f < FLAG_FRAMES; f++) {
+    out.push({ name: `fx/flag/${f}`, w: 16, h: 12, ax: 1, ay: 11, draw: (c, s) => drawFlagFrame(c, 16 * s, 12 * s, s, f) });
+    out.push({ name: `fx/smoke/${f}`, w: 24, h: 24, ax: 12, ay: 20, draw: (c, s) => drawFx(c, 24 * s, 24 * s, "smoke", s, f) });
   }
   return out;
 }
@@ -115,6 +121,12 @@ export function buildAtlas(era: Era, s: number, make: CanvasFactory = domCanvas,
     pages[it.page].getContext("2d")!.drawImage(drawn.get(it.name)!, it.x, it.y);
     const f = byName.get(it.name)!;
     frames.set(it.name, { page: it.page, x: it.x, y: it.y, w: it.w, h: it.h, ax: f.ax / f.w, ay: f.ay / f.h });
+  }
+  for (const job of JOBS) {
+    const a = frames.get(personFrameName(job, "walk", "se", 0));
+    const b = frames.get(personFrameName(job, "walk", "se", 1));
+    if (a) frames.set(`p/${job}/0`, a);
+    if (b) frames.set(`p/${job}/1`, b);
   }
   const grain = make(128, 128);
   drawGrainInto(grain);
