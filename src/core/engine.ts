@@ -12,6 +12,8 @@ import {
 } from "./rules";
 import type { Building, Glob, IslandState } from "./state";
 
+export { dayKind } from "./rules";
+
 // ---------- randomness carried in the state ----------
 export function rand(st: IslandState): number {
   const [v, s] = step(st.rngS);
@@ -444,14 +446,8 @@ export function fight(st: IslandState, decision: Decision, S: number): RaidResul
   return ev;
 }
 
-/** Dusk: the player's decision, then the fight. `roll` rolls the actual strength inside ±spread. */
-export function resolveDusk(st: IslandState, decision: Decision = "hold", roll: Roll = stateRoll(st)): DuskResult {
-  const day = st.day;
-  const kind = DAY_KIND[day] || "quiet";
-  const n0 = kind === "raid" ? nominal(st) : 0;
-  const inc0 = income(st);
-  st.phase = "night";
-  if (kind === "quiet") return { day, quiet: true };
+/** The decision's own effects: the dusk loan (falls back to hold without headroom) or the walls. */
+export function applyDecision(st: IslandState, decision: Decision): Decision {
   if (decision === "borrow") {
     if (canBorrowDusk(st)) {
       const x = duskLoan(st);
@@ -462,6 +458,18 @@ export function resolveDusk(st: IslandState, decision: Decision = "hold", roll: 
     } else decision = "hold";
   }
   if (decision === "walls") st.noMorning = true;
+  return decision;
+}
+
+/** Dusk: the player's decision, then the fight. `roll` rolls the actual strength inside ±spread. */
+export function resolveDusk(st: IslandState, decision: Decision = "hold", roll: Roll = stateRoll(st)): DuskResult {
+  const day = st.day;
+  const kind = DAY_KIND[day] || "quiet";
+  const n0 = kind === "raid" ? nominal(st) : 0;
+  const inc0 = income(st);
+  st.phase = "night";
+  if (kind === "quiet") return { day, quiet: true };
+  decision = applyDecision(st, decision);
   const S = Math.round(nominal(st) * (1 - spread(st) + 2 * spread(st) * roll()));
   const ev = fight(st, decision, S);
   if (kind === "raid") st.breather = !ev.won;
