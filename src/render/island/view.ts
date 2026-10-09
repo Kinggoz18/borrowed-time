@@ -3,7 +3,7 @@
  * the boot-time atlas with plain sprites (one batch per atlas page). Reads IslandState; never
  * changes it. Animations are presentation only: the rules already resolved before they play.
  */
-import { Application, Container, Graphics, Particle, ParticleContainer, Sprite, TilingSprite, type FederatedPointerEvent } from "pixi.js";
+import { Application, Container, Graphics, Particle, ParticleContainer, Sprite, Texture, TilingSprite, type FederatedPointerEvent } from "pixi.js";
 import type { RaidResult } from "../../core/engine";
 import { kij } from "../../core/rules";
 import type { IslandState } from "../../core/state";
@@ -110,7 +110,8 @@ export class IslandView {
   private ensureAtlas(st: IslandState): void {
     const era = eraOf(st.tier);
     if (era === this.era) return;
-    this.tex?.destroy();
+    this.releaseAtlasSprites();
+    const old = this.tex;
     const s = this.cfg.atlas === "low" ? 1 : 2;
     this.atlas = buildAtlas(era, s);
     this.thumbs.clear();
@@ -122,15 +123,22 @@ export class IslandView {
       this.grain.eventMode = "none";
       this.overlay.addChild(this.grain, this.wash);
     } else this.grain.texture = this.tex.grain;
+    old?.destroy();
+  }
+  /** Drop every sprite that still holds an atlas texture before the sources are destroyed. */
+  private releaseAtlasSprites(): void {
+    this.clearFx();
+    this.smoke.texture = Texture.EMPTY;
     for (const w of this.walkers) w.sp.destroy();
     this.walkers = [];
     for (const b of this.boats) b.destroy();
     this.boats = [];
     this.boatBase.clear();
-    this.clearFx();
+    this.foamBits = [];
     for (const s of this.sprites.values()) s.destroy();
     this.sprites.clear();
     this.ground.removeChildren().forEach((c) => c.destroy());
+    this.sea.removeChildren().forEach((c) => c.destroy());
   }
 
   /** Re-lays the island for the state. Cheap enough to call after every command. */
@@ -594,6 +602,7 @@ export class IslandView {
       for (const h of this.hearths) {
         if (this.puffs.length >= Math.min(40, this.cfg.particles)) break;
         const tex = this.tex.has("fx/smoke/0") ? this.tex.get(`fx/smoke/${Math.floor(Math.random() * 3)}`) : this.tex.get("fx/smoke");
+        this.smoke.texture = tex;
         const p = new Particle({ texture: tex, x: h.x, y: h.y, alpha: 0.85, scaleX: 0.65, scaleY: 0.65, anchorX: 0.5, anchorY: 0.8 });
         this.smoke.addParticle(p);
         this.puffs.push({ p, life: 0, max: 1.5 + Math.random() * 0.8, vy: 11 + Math.random() * 7 });
