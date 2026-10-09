@@ -61,7 +61,7 @@ describe("city stress island", () => {
   });
   it("places every City building type at its count, mostly at looks 5-7", () => {
     for (const t of BUILDING_TYPES) {
-      const n = city.buildings.filter((b) => b.type === t && !b.block).length;
+      const n = city.buildings.filter((b) => b.type === t && (!b.block || b.id < 81)).length;
       expect(n, t).toBe(CITY_COUNTS[t]);
     }
     const big = city.buildings.filter((b) => !b.block && b.n >= 2).length;

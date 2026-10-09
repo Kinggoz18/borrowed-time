@@ -166,7 +166,9 @@ export function buildCity(seed = 1, greyShare = 0.5): City {
       if (spots.length === 0) break;
       const s = rng.pick(spots);
       lotUse[lotIndex(s.i, s.j)] = "building";
-      buildings.push({ id: buildings.length, type, look: 3, i: s.i, j: s.j, n: 1, anchor: footprintAnchor(s.i, s.j, 1), depth: depthKey(s.i, s.j, 1), grey: greySet.has(lotIndex(s.i, s.j)), fire: false, block: false });
+      // Cottages that can't spread merge into a terrace block (plan §2); others keep the tall 1x1 look.
+      const cottage = type === "cottage";
+      buildings.push({ id: buildings.length, type, look: cottage ? 4 : 3, i: s.i, j: s.j, n: 1, anchor: footprintAnchor(s.i, s.j, 1), depth: depthKey(s.i, s.j, 1), grey: greySet.has(lotIndex(s.i, s.j)), fire: false, block: cottage });
     }
   }
   // Fill the remaining empty lots with cottages merged into terrace blocks (Town up, plan §2).
