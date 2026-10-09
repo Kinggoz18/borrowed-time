@@ -34,12 +34,32 @@ export function drawGround(p: Pen, era: Era, kind: GroundKind, v: number): void 
     // a hint of form, not a bevelled slab
     p.poly([p.P(0.02, 0.02), p.P(0.98, 0.02), p.P(0.9, 0.1), p.P(0.1, 0.1)], r.light, "none");
   }
-  if (kind === "lot") {
-    // grass/dirt blend: worked earth patches, no stakes, no outline, no bevel
-    for (let n = 0; n < 5; n++) {
-      const a = 0.18 + 0.64 * hash(v * 5 + n, 3), b = 0.18 + 0.64 * hash(n + 9, v + 2);
-      const s = 0.1 + 0.08 * hash(n, v);
-      p.diamond(a, b, a + s, b + s * 0.85, 0, hash(n, v + 7) > 0.45 ? k.ground.base : k.ground.light, "none");
+  if (kind === "grass" || kind === "lot") {
+    if (kind === "lot") {
+      // dirt apron in the middle, grass rim so lots blend into neighbouring grass (no bevel)
+      p.poly([
+        p.P(0.20 + wob(v, 1, 0.04), 0.22 + wob(v, 2, 0.04), 0),
+        p.P(0.78 + wob(v, 3, 0.04), 0.20 + wob(v, 4, 0.04), 0),
+        p.P(0.82 + wob(v, 5, 0.04), 0.78 + wob(v, 6, 0.04), 0),
+        p.P(0.22 + wob(v, 7, 0.04), 0.82 + wob(v, 8, 0.04), 0),
+      ], k.ground.light, "none");
+      p.poly([
+        p.P(0.32 + wob(v, 11, 0.03), 0.34 + wob(v, 12, 0.03), 0),
+        p.P(0.68 + wob(v, 13, 0.03), 0.32 + wob(v, 14, 0.03), 0),
+        p.P(0.70 + wob(v, 15, 0.03), 0.68 + wob(v, 16, 0.03), 0),
+        p.P(0.34 + wob(v, 17, 0.03), 0.70 + wob(v, 18, 0.03), 0),
+      ], k.ground.base, "none");
+    }
+    const nPatches = kind === "lot" ? 3 : 4;
+    for (let n = 0; n < nPatches; n++) {
+      const a = 0.10 + 0.72 * hash(v * 5 + n, 3), b = 0.10 + 0.72 * hash(n + 9, v + 2);
+      const s = 0.10 + 0.14 * hash(n, v);
+      p.poly([
+        p.P(a, b, 0),
+        p.P(a + s + wob(n, v, 0.04), b + wob(n, 4, 0.03), 0),
+        p.P(a + s * 0.85, b + s * 0.9, 0),
+        p.P(a + wob(n, 8, 0.04), b + s * 0.7, 0),
+      ], hash(n, v + 7) > 0.5 ? k.ground.base : kind === "lot" ? k.ground.shade : k.ground.light, "none");
     }
   }
   const c = p.c;
@@ -64,6 +84,18 @@ export function drawGround(p: Pen, era: Era, kind: GroundKind, v: number): void 
     for (let n = 0; n < 5; n++) {
       const a = 0.2 + 0.6 * hash(n + 40, v), b = 0.2 + 0.6 * hash(v + 9, n + 2);
       p.diamond(a, b, a + 0.08, b + 0.08, 0, ROAD.light, "none");
+    }
+    // grass tufts at the corners so the track feathers into neighbouring grass
+    c.strokeStyle = k.grass.shade;
+    c.lineWidth = p.line / 2;
+    for (const [a, b] of [[0.08, 0.12], [0.88, 0.10], [0.10, 0.88], [0.90, 0.86]] as const) {
+      const [x, y] = p.P(a, b);
+      c.beginPath();
+      c.moveTo(x - 2 * p.s, y);
+      c.lineTo(x, y - 3 * p.s);
+      c.moveTo(x + 1.5 * p.s, y);
+      c.lineTo(x + 0.4 * p.s, y - 2.6 * p.s);
+      c.stroke();
     }
   }
 }
