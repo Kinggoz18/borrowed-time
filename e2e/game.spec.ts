@@ -188,12 +188,13 @@ test("the arc: empty land to Village", async ({ page }) => {
       await expect(page.locator(".card.held, .card.lost").first()).toBeVisible({ timeout: 30_000 });
       await act(page, "sleep").click();
     }
-    for (let k = 0; k < 6; k++) {
-      await page.waitForTimeout(300);
+    // morning cards come one after another (the tier card last): wait until the screen is clear
+    for (let k = 0; k < 12; k++) {
+      await page.waitForTimeout(400);
       if (await page.locator(".card.tier").count()) break;
       const ok = page.locator('.card-wrap [data-act="ok"]');
-      if (!(await ok.count())) break;
-      await ok.first().click();
+      if (await ok.count()) await ok.first().click();
+      else if (k > 2) break;
     }
     if (await page.locator(".card.tier").count()) break;
     await dev(page, "dev-people");

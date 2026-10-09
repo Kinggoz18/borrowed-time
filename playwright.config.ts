@@ -15,6 +15,8 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:5191",
     trace: "off",
+    // a blocked tap fails in 30 s instead of waiting out the whole test
+    actionTimeout: 30_000,
   },
   webServer: [
     {
