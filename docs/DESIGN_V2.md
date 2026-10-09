@@ -81,7 +81,7 @@ A tier-up card lists the new land, people cap, level cap and what's new, plus on
 | Hospital (Town) | (40+2n)% of people lost in a raid come back wounded after 2 days instead; sick people in plague events recover (build) | Raid and plague losses spiral a village | [the Stitch: a stitch in time] | Makes losing a raid while in debt survivable |
 | Exchange (City) | Interest ×(0.7−0.01n), credit limit ×(1.15+0.01n) | Late debt is too expensive to use | [a counting house on Aster's plan] | Refinancing: cheaper, longer debt |
 | Harbour (City) | +(8+3n) defence; borrowing the dusk gives ×1.5 instead of ×1.3; captured boats moor here | The dusk loan stops paying off late | [the *Nick of Time* rows out to meet the Late] | The dusk loan becomes a weapon |
-| Observatory (City) | Raid hints name the kind and give a ±10% range (build; was an exact forecast); the Long Dusk feeds on (40+n)% less debt | Big dusk bets are blind guesses | [Ada can count oars, not intentions] | Carry debt into day 6 with a better, never perfect, read |
+| Observatory (City) | Raid hints name the kind and give a ±10% range instead of ±25% (build; was an exact forecast); the Long Dusk feeds on (40+n)% less debt | Big dusk bets are blind guesses | [Ada can count oars, not intentions] | Carry debt into day 6 with a better, never perfect, read |
 
 Each tier also caps how many of each building you can have:
 
@@ -192,7 +192,7 @@ raid day 2 = (0.45·w + 5) · ramp · tierRaidScale · events · breather
 raid day 4 = (0.65·w + 7) · ramp · tierRaidScale · events · breather
 Long Dusk  = (0.78·w + 8 + 0.55·dawnDebt/costMul) · ramp · tierRaidScale · events
              dawnDebt = max(debt now, debt at dawn on day 6); ×(0.6−0.01n) with an Observatory
-actual strength = nominal × (0.85…1.15); shown only as a hint band, or a ±10% range with an Observatory (build)
+actual strength = nominal × (0.85…1.15); shown as a ±25% range (Observatory ±10%) plus a light/even/heavy band, never the exact roll
 breather: after a lost raid, or after any Long Dusk, the next raid is ×0.8
 lost raid: ceil(f·(4+2·tier)) hits (+1 with Roads, −1 with a Hospital); people lost = ceil(f·8%·pop), ×2 at the walls, ×2 to the Long Dusk
 ```
@@ -296,6 +296,8 @@ Lore drives gameplay: every rule needs a story reason. ✔ = has a reason; ✎ =
 | Tier unlocks (Roads, Trade Post, Academy, Hospital, Exchange, Harbour, Observatory) | Each has its beat in `LORE.md` | ✔ |
 | Only quiet nights are announced | The watchtower can vouch for an empty horizon, not for what's beyond it | ✎ (build) |
 | Raid nights give a cryptic kind-and-power hint | Gulls, oars and drums carry before the boats do | ✎ (build) |
+| New Late types per era (ghosts, runners, siege, rams, ironclads, meters) | Each boat is from the age its island went fully grey; stealth boats hide, fast ones step onto lent land, siege wants walls, rams want craft, iron and clerks come from later greys | ✎ (build) |
+| Ghosts hide unless an Observatory or Watchtower n≥3 spots them | Ada can count oars; a timber tower can still see a quiet hull | ✎ (build) |
 | The Long Dusk is always day 6 | The season's end is the one appointment the Late keep | ✎ |
 | Observatory sharpens hints, never forecasts | Ada can count oars, not intentions | ✎ (build, replaces exact forecast) |
 | People produce only in job slots | The dial pays for work, not for presence | ✎ (build) |

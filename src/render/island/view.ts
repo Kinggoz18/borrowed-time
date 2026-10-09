@@ -3,13 +3,14 @@
  * the boot-time atlas with plain sprites (one batch per atlas page). Reads IslandState; never
  * changes it. Animations are presentation only: the rules already resolved before they play.
  */
-import { Application, Container, Graphics, Particle, ParticleContainer, Sprite, Texture, TilingSprite, type FederatedPointerEvent } from "pixi.js";
+import { Application, Container, Graphics, Particle, ParticleContainer, Sprite, TilingSprite, type FederatedPointerEvent } from "pixi.js";
 import type { RaidResult } from "../../core/engine";
 import { kij } from "../../core/rules";
 import type { IslandState } from "../../core/state";
 import { buildAtlas, type IslandAtlas } from "../../art/island/atlas";
 import { personFrameName, type Job, type PersonAnim, type PersonView } from "../../art/island/people";
 import type { TierConfig } from "../config";
+import { BATTLE_RESOLVED_EVENT, battleTimeline, boatCount, prefersReducedMotion, raiderCount } from "./battle";
 import { cellAt, cellFront, eraOf, layoutIsland, lotCornerKeys, radius, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
 import { pickAt } from "./pick";
 import { toTextures, type IslandTextures } from "./textures";
@@ -37,7 +38,6 @@ interface Tween {
   done?: () => void;
 }
 
-const sleep = (view: IslandView, s: number) => new Promise<void>((res) => view.tween(s, () => undefined, res));
 const isWatch = (job: Job) => job === "watch" || job === "nell";
 
 /** Play-area insets (CSS px); updated from the DOM HUD and rail each frame. */
@@ -86,6 +86,8 @@ export class IslandView {
   private night = false;
   onTapLot: (key: string) => void = () => undefined;
   onTapTent: () => void = () => undefined;
+  /** Fired once the clash outcome is on screen, before damage or seizure visuals. */
+  onBattleResolved: ((res: RaidResult) => void) | null = null;
 
   constructor(
     private app: Application,
@@ -124,12 +126,27 @@ export class IslandView {
       this.grain.eventMode = "none";
       this.overlay.addChild(this.grain, this.wash);
     } else this.grain.texture = this.tex.grain;
-    old?.destroy();
+    if (old) {
+      try {
+        this.app.renderer.render(this.app.stage);
+      } catch {
+        /* tests may not have a live GPU */
+      }
+      const drop = (): void => old.destroy();
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(drop);
+      else drop();
+    }
   }
   /** Drop every sprite that still holds an atlas texture before the sources are destroyed. */
   private releaseAtlasSprites(): void {
     this.clearFx();
-    this.smoke.texture = Texture.EMPTY;
+    if (this.era) {
+      this.smoke.removeFromParent();
+      this.smoke.destroy();
+      this.smoke = new ParticleContainer({ dynamicProperties: { position: true, color: true, scale: true } });
+      this.smoke.zIndex = 80;
+      this.objects.addChild(this.smoke);
+    }
     for (const w of this.walkers) w.sp.destroy();
     this.walkers = [];
     for (const b of this.boats) b.destroy();
@@ -454,6 +471,16 @@ export class IslandView {
   frozen = false;
   private update(dt: number): void {
     dt = Math.min(dt, 0.1);
+    // tweens keep running while paused so dusk battle and seizure can play
+    for (const tw of this.tweens.slice()) {
+      tw.t += dt;
+      const u = Math.min(1, tw.t / tw.dur);
+      tw.step(u);
+      if (u >= 1) {
+        this.tweens.splice(this.tweens.indexOf(tw), 1);
+        tw.done?.();
+      }
+    }
     if (this.frozen) return;
     if (this.glide && !this.dragFrom) {
       const k = Math.min(1, dt * 6);
@@ -463,15 +490,6 @@ export class IslandView {
       this.apply();
       // arrived, or held at the island's edge
       if (Math.hypot(this.glide.x - this.cx, this.glide.y - this.cy) < 0.5 || Math.hypot(this.cx - px, this.cy - py) < 0.05) this.glide = null;
-    }
-    for (const tw of this.tweens.slice()) {
-      tw.t += dt;
-      const u = Math.min(1, tw.t / tw.dur);
-      tw.step(u);
-      if (u >= 1) {
-        this.tweens.splice(this.tweens.indexOf(tw), 1);
-        tw.done?.();
-      }
     }
     this.clock += dt;
     this.stepWalkers(dt);
@@ -650,55 +668,145 @@ export class IslandView {
   /** The raid, played back from the already-resolved result. Resolves when the playback ends. */
   async playRaid(res: RaidResult): Promise<void> {
     const g = this.layout.gate;
-    const n = Math.min(this.cfg.boats, res.boss ? 4 : 2);
+    const reduced = prefersReducedMotion();
+    const ghost = res.kind === "ghosts";
+    const n = boatCount(res.kind, res.boss, this.cfg.boats);
     const boats: Sprite[] = [];
     for (let k = 0; k < n; k++) {
-      const b = this.fx("boat", g.x + 260 + k * 30, g.y + 120 + k * 40, -1);
+      const b = this.fx("boat", g.x + 280 + k * 32, g.y + 130 + k * 36, -1);
+      b.alpha = ghost ? 0.45 : 1;
       this.sea.addChild(b);
       boats.push(b);
     }
-    await new Promise<void>((done) =>
-      this.tween(1.6, (u) => boats.forEach((b, k) => b.position.set(g.x + 260 - 170 * ease(u) + k * 30, g.y + 120 - 70 * ease(u) + k * 40)), done),
-    );
     const raiders: Sprite[] = [];
-    const m = Math.min(this.cfg.raiders, res.boss ? 10 : 5);
-    for (let k = 0; k < m; k++) raiders.push(this.fx("p/raider/0", g.x + 80 + (k % 4) * 10, g.y + 40 + Math.floor(k / 4) * 8));
-    await new Promise<void>((done) =>
-      this.tween(1.2, (u) => raiders.forEach((r, k) => {
-        r.position.set(g.x + 80 - 60 * u + (k % 4) * 10, g.y + 40 - 28 * u + Math.floor(k / 4) * 8);
-        r.texture = this.personTex("raider", "walk", "nw", Math.floor(u * 8) % 4);
-        r.scale.x = 1;
-      }), done),
-    );
-    if (res.won) {
-      const sparks = raiders.slice(0, 3).map((r) => this.fx("fx/spark", r.x, r.y - 14));
-      await sleep(this, 0.4);
-      sparks.forEach((s) => s.destroy());
-      await new Promise<void>((done) => this.tween(1, (u) => raiders.forEach((r) => ((r.alpha = 1 - u), (r.x += 1.5), (r.scale.x = 1))), done));
-    } else {
-      const fires: Sprite[] = [];
-      for (const d of res.damaged.slice(0, 6)) {
-        const [i, j] = kij(d.k);
-        const p = cellFront(i, j);
-        fires.push(this.fx("fx/fire", p.x, p.y - 24), this.fx("fx/smoke", p.x + 4, p.y - 44));
-      }
-      await new Promise<void>((done) => this.tween(1.8, (u) => fires.forEach((f, k) => ((f.scale.y = 1 + 0.15 * Math.sin(u * 30 + k)), (f.alpha = u > 0.8 ? (1 - u) * 5 : 1))), done));
-      fires.forEach((f) => f.destroy());
-      await new Promise<void>((done) => this.tween(0.8, (u) => raiders.forEach((r) => (r.alpha = 1 - u)), done));
+    const m = raiderCount(res.kind, res.boss, this.cfg.raiders);
+    for (let k = 0; k < m; k++) {
+      const r = this.fx("p/raider/0", g.x + 90 + (k % 4) * 10, g.y + 48 + Math.floor(k / 4) * 8);
+      r.alpha = ghost ? 0.5 : 1;
+      raiders.push(r);
     }
-    raiders.forEach((r) => r.destroy());
-    await new Promise<void>((done) => this.tween(1.2, (u) => boats.forEach((b, k) => (k > 0 || !res.won ? (b.alpha = 1 - u) : (b.texture = this.tex.get("boat/beached")))), done));
-    boats.forEach((b, k) => {
-      if (k > 0 || !res.won) b.destroy();
-      else {
-        this.boatBase.set(b, b.y);
-        this.boats.push(b);
+    const defenders: Sprite[] = [];
+    for (let k = 0; k < Math.min(4, Math.max(2, this.walkers.length)); k++) {
+      defenders.push(this.fx("p/watch/0", g.x - 70 + k * 14, g.y + 10, 80));
+    }
+    const ring: Sprite[] = [];
+    const towers: Sprite[] = [];
+    for (const [id, sp] of this.sprites) {
+      if (id.includes("ring/") || id.includes("gate/")) ring.push(sp);
+      if (id.includes("tower") || id.includes("watch")) towers.push(sp);
+    }
+    const towerY = towers.map((s) => s.y);
+    const ringX = ring.map((s) => s.x);
+    const wait = (dur: number, step: (u: number) => void) =>
+      dur <= 0 ? Promise.resolve(step(1)) : new Promise<void>((done) => this.tween(dur, step, done));
+
+    for (const beat of battleTimeline(res, reduced)) {
+      if (beat.phase === "approach") {
+        await wait(beat.dur, (u) => {
+          const e = ease(u);
+          boats.forEach((b, k) => b.position.set(g.x + 280 - 190 * e + k * 32, g.y + 130 - 80 * e + k * 36 + Math.sin(u * 8 + k) * 2));
+        });
+      } else if (beat.phase === "defend") {
+        await wait(beat.dur, (u) => {
+          ring.forEach((s) => (s.alpha = 0.75 + 0.25 * Math.sin(u * Math.PI * 4)));
+          towers.forEach((s, k) => (s.y = towerY[k]! + Math.sin(u * Math.PI * 2 + k) * 2));
+          defenders.forEach((d, k) => {
+            d.x = g.x - 70 + k * 14 + 24 * u;
+            d.y = g.y + 10 - 18 * u;
+            d.texture = this.personTex("watch", "walk", "se", Math.floor(u * 6) % 4);
+            d.scale.x = 1;
+          });
+        });
+        ring.forEach((s) => (s.alpha = 1));
+        towers.forEach((s, k) => (s.y = towerY[k]!));
+      } else if (beat.phase === "clash") {
+        const sparks: Sprite[] = [];
+        await wait(beat.dur, (u) => {
+          raiders.forEach((r, k) => {
+            r.position.set(g.x + 90 - 70 * u + (k % 4) * 10, g.y + 48 - 32 * u + Math.floor(k / 4) * 8);
+            r.texture = this.personTex("raider", "walk", "nw", Math.floor(u * 10) % 4);
+            r.scale.x = 1;
+          });
+          if (sparks.length < 3 && u > 0.2) {
+            const t = towers[sparks.length] ?? defenders[sparks.length];
+            const target = raiders[sparks.length % raiders.length];
+            if (t && target) sparks.push(this.fx("fx/spark", t.x, t.y - 20));
+          }
+          sparks.forEach((s, k) => {
+            const target = raiders[k % Math.max(1, raiders.length)];
+            if (!target) return;
+            s.x += (target.x - s.x) * 0.2;
+            s.y += (target.y - 12 - s.y) * 0.2;
+            s.alpha = 0.4 + 0.6 * Math.sin(u * 30 + k);
+          });
+        });
+        sparks.forEach((s) => s.destroy());
+      } else if (beat.phase === "outcome") {
+        if (res.won) {
+          const sparks = raiders.slice(0, 3).map((r) => this.fx("fx/spark", r.x, r.y - 14));
+          await wait(beat.dur, (u) => {
+            raiders.forEach((r) => {
+              r.x += 1.2;
+              r.alpha = 1 - u;
+              r.scale.x = 1;
+            });
+            sparks.forEach((s) => (s.alpha = 1 - u));
+          });
+          sparks.forEach((s) => s.destroy());
+        } else {
+          await wait(beat.dur, (u) => {
+            raiders.forEach((r, k) => {
+              r.x -= 0.4;
+              r.y -= 0.2;
+              r.texture = this.personTex("raider", "walk", "nw", Math.floor(u * 8 + k) % 4);
+            });
+            ring.forEach((s, k) => (s.x = ringX[k]! + Math.sin(u * 40) * 2));
+            defenders.forEach((d) => (d.alpha = 1 - u * 0.5));
+          });
+          ring.forEach((s, k) => (s.x = ringX[k]!));
+        }
+      } else if (beat.phase === "resolved") {
+        this.emitBattleResolved(res);
+      } else if (beat.phase === "aftermath") {
+        if (!res.won) {
+          const fires: Sprite[] = [];
+          for (const dmg of res.damaged.slice(0, 6)) {
+            if (dmg.k === "pal") continue;
+            const [i, j] = kij(dmg.k);
+            const p = cellFront(i, j);
+            fires.push(this.fx("fx/fire", p.x, p.y - 24), this.fx("fx/smoke", p.x + 4, p.y - 44));
+          }
+          await wait(beat.dur, (u) => {
+            fires.forEach((f, k) => ((f.scale.y = 1 + 0.15 * Math.sin(u * 30 + k)), (f.alpha = u > 0.8 ? (1 - u) * 5 : 1)));
+            raiders.forEach((r) => (r.alpha = (ghost ? 0.5 : 1) * (1 - u)));
+          });
+          fires.forEach((f) => f.destroy());
+        } else await wait(Math.min(beat.dur, 0.4), () => undefined);
+        raiders.forEach((r) => r.destroy());
+        defenders.forEach((d) => d.destroy());
+        await wait(reduced ? 0.05 : 1.0, (u) => boats.forEach((b, k) => (k > 0 || !res.won ? (b.alpha = (ghost ? 0.45 : 1) * (1 - u)) : (b.texture = this.tex.get("boat/beached")))));
+        boats.forEach((b, k) => {
+          if (k > 0 || !res.won) b.destroy();
+          else {
+            this.boatBase.set(b, b.y);
+            this.boats.push(b);
+          }
+        });
+        while (this.boats.length > 3) {
+          const gone = this.boats.shift()!;
+          this.boatBase.delete(gone);
+          gone.destroy();
+        }
       }
-    });
-    while (this.boats.length > 3) {
-      const gone = this.boats.shift()!;
-      this.boatBase.delete(gone);
-      gone.destroy();
+    }
+  }
+
+  private emitBattleResolved(res: RaidResult): void {
+    this.onBattleResolved?.(res);
+    try {
+      dispatchEvent(new CustomEvent(BATTLE_RESOLVED_EVENT, { detail: { won: res.won, day: res.day, season: res.season, kind: res.kind, boss: res.boss } }));
+    } catch {
+      /* node tests have no window events */
     }
   }
 
