@@ -8,7 +8,7 @@ import { packShelves } from "../pack";
 import { drawBuilding, drawGnomon, drawTent, ERA_TYPES, LOOKS_PER_ERA } from "./buildings";
 import type { Era } from "./palette";
 import { Pen } from "./pen";
-import { drawBoat, drawFx, drawGrain, drawGate, drawGround, drawPerson, drawRing, FX, greyify, GROUND_KINDS, GROUND_VARIANTS, JOBS, RING_PIECES, RING_STAGES } from "./scenery";
+import { drawBoat, drawFx, drawGrain, drawGate, drawGround, drawPerson, personFrame, drawRing, FX, greyify, GROUND_KINDS, GROUND_VARIANTS, JOBS, RING_PIECES, RING_STAGES } from "./scenery";
 
 export interface FrameDef {
   name: string;
@@ -73,7 +73,11 @@ export function frameDefs(era: Era): FrameDef[] {
       for (const shut of [false, true])
         out.push({ name: `gate/${st}/${along ? "A" : "B"}/${shut ? 1 : 0}`, w: 64, h: 64, ax: 32, ay: 50, draw: (c, s) => drawGate(pen(c, 32, 50, s, st + 19), st, along, shut) });
   }
-  for (const job of JOBS) for (const f of [0, 1]) out.push({ name: `p/${job}/${f}`, w: 22, h: 30, ax: 9, ay: 28, draw: (c, s) => drawPerson(c, 9 * s, 28 * s, s, job, f) });
+  for (const job of JOBS)
+    for (const f of [0, 1]) {
+      const pf = personFrame(job);
+      out.push({ name: `p/${job}/${f}`, ...pf, draw: (c, s) => drawPerson(c, pf.ax * s, pf.ay * s, s, job, f) });
+    }
   out.push({ name: "boat", w: 56, h: 50, ax: 28, ay: 44, draw: (c, s) => drawBoat(c, 28 * s, 44 * s, s, true) });
   out.push({ name: "boat/beached", w: 56, h: 50, ax: 28, ay: 44, draw: (c, s) => drawBoat(c, 28 * s, 44 * s, s, false) });
   const fxSize: Record<string, [number, number]> = { fire: [16, 24], smoke: [24, 24], glow: [64, 64], spark: [6, 12], foam: [32, 12], dust: [24, 24] };

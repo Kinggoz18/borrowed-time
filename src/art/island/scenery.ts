@@ -2,7 +2,7 @@
  * Ground, ring, people, boats and effects for the island stand-ins (ART_BIBLE.md §2, §4, §5, §9).
  * Same rules as the buildings: 2:1 iso, ink outlines, baked 3-step light from the upper left.
  */
-import { BRASS_PIN, DRIFT, FOAM, HESPER, INK, SAIL, STRIPE, TARR, TEAL, TEAL_DEEP, kitFor, type Era, type Ramp } from "./palette";
+import { BRASS_PIN, DRIFT, FOAM, INK, SAIL, STRIPE, TARR, kitFor, type Era, type Ramp } from "./palette";
 import type { Ctx, Pen } from "./pen";
 
 export type GroundKind = "grass" | "lot" | "sand" | "road";
@@ -117,90 +117,219 @@ export function drawGate(p: Pen, stage: number, along: boolean, shut: boolean): 
 /** Jobs and their tunic colours (no colour-only meaning: jobs also carry a tool silhouette). */
 export type Job = "field" | "clockworks" | "trade" | "watch" | "raider" | "hesper";
 export const JOBS: Job[] = ["field", "clockworks", "trade", "watch", "raider", "hesper"];
+/** Costume by job (ART_BIBLE.md §10): field moss, Clockworks oak, watch driftwood, trade ochre. */
 const TUNIC: Record<Job, Ramp> = {
-  field: { light: "#D9BF7C", base: "#BD9D68", shade: "#8F754F" },
-  clockworks: { light: "#D8BE86", base: BRASS_PIN, shade: "#8D7449" },
-  trade: { light: "#7FB3B1", base: TEAL, shade: TEAL_DEEP },
-  watch: { light: "#B8806A", base: "#97604B", shade: "#6B4334" },
+  field: { light: "#9DAA6E", base: "#7E8F55", shade: "#5C6B3D" },
+  clockworks: { light: "#987554", base: "#72583F", shade: "#4F3C2C" },
+  trade: { light: "#DDB879", base: "#BD9D68", shade: "#8F754F" },
+  watch: DRIFT,
   raider: TARR,
-  hesper: STRIPE,
+  hesper: { light: "#5A4E48", base: "#3F3633", shade: "#2B2422" }, // her long dark coat
 };
+const SKIN = "#E2B98F";
+const LATE_SKIN = "#7B7366"; // the Late are tar-grey silhouettes (ART_BIBLE.md §10)
+
+/** Figure height in world px: villagers 0.4 of a tile, Hesper 0.55 (ART_BIBLE.md §10). */
+export const PERSON_H = 26;
+export const HESPER_H = 35;
+/** Atlas frame for a figure (world units), anchored at the feet. */
+export const personFrame = (job: Job) => (job === "hesper" ? { w: 26, h: 42, ax: 13, ay: 40 } : { w: 28, h: 34, ax: 14, ay: 32 });
+
 /**
- * A villager figure, about 18 px tall at s = 1: anchor is the feet. Frame 0/1 are the two steps
- * of the walk. Readable silhouette first: head, tunic, a tool for the job.
+ * A paper puppet (ART_BIBLE.md §10): six flat parts (legs in one piece, torso, head, two arms,
+ * prop), ink outlines, brass split pins at the neck, shoulders and hip, two ink dots for a face.
+ * Frame 0/1 are the two baked poses (legs ±12°, the working arm ±25°).
  */
 export function drawPerson(c: Ctx, ax: number, ay: number, s: number, job: Job, frame: number): void {
-  const L = s >= 2 ? 2 : 1.5;
+  const L = Math.max(1.2, 0.9 * s);
   const t = TUNIC[job];
+  const late = job === "raider";
+  const hes = job === "hesper";
+  const skin = late ? LATE_SKIN : SKIN;
+  const sw = frame ? 1 : -1;
   c.lineJoin = "round";
   c.lineCap = "round";
   c.strokeStyle = INK;
-  const step = frame ? 1.6 : -1.6;
-  // legs
-  c.lineWidth = 2.2 * s;
-  c.beginPath();
-  c.moveTo(ax - 1.5 * s, ay - 6 * s);
-  c.lineTo(ax - 1.5 * s + step * s, ay);
-  c.moveTo(ax + 1.5 * s, ay - 6 * s);
-  c.lineTo(ax + 1.5 * s - step * s, ay);
-  c.stroke();
-  // body: tunic or cloak
-  const cloak = job === "raider" || job === "hesper";
-  c.beginPath();
-  c.moveTo(ax - (cloak ? 5 : 4) * s, ay - (cloak ? 2 : 5) * s);
-  c.lineTo(ax - 3 * s, ay - 13 * s);
-  c.lineTo(ax + 3 * s, ay - 13 * s);
-  c.lineTo(ax + (cloak ? 5 : 4) * s, ay - (cloak ? 2 : 5) * s);
-  c.closePath();
-  c.fillStyle = t.base;
-  c.fill();
   c.lineWidth = L;
-  c.stroke();
-  c.beginPath();
-  c.moveTo(ax + 0.5 * s, ay - 12.5 * s);
-  c.lineTo(ax + 3 * s, ay - 12.5 * s);
-  c.lineTo(ax + (cloak ? 4.5 : 3.6) * s, ay - (cloak ? 2.5 : 5.5) * s);
-  c.lineTo(ax + 0.5 * s, ay - (cloak ? 2.5 : 5.5) * s);
-  c.closePath();
-  c.fillStyle = t.shade;
-  c.fill();
-  // head (hood for raiders)
-  c.beginPath();
-  c.arc(ax, ay - 15.5 * s, 2.6 * s, 0, Math.PI * 2);
-  c.fillStyle = job === "raider" ? TARR.base : "#E2B98F";
-  c.fill();
-  c.lineWidth = L;
-  c.stroke();
-  if (job === "hesper") {
+  const shape = (pts: number[][], fill: string): void => {
     c.beginPath();
-    c.moveTo(ax - 4 * s, ay - 16 * s);
-    c.lineTo(ax + 4 * s, ay - 16 * s);
-    c.lineTo(ax, ay - 22 * s);
+    pts.forEach(([x, y], k) => (k ? c.lineTo(x * s, y * s) : c.moveTo(x * s, y * s)));
     c.closePath();
-    c.fillStyle = HESPER;
+    c.fillStyle = fill;
     c.fill();
     c.stroke();
+  };
+  const pin = (x: number, y: number): void => {
+    c.beginPath();
+    c.arc(x * s, y * s, 1.05 * s, 0, Math.PI * 2);
+    c.fillStyle = BRASS_PIN;
+    c.fill();
+    c.lineWidth = Math.max(0.8, 0.45 * s);
+    c.stroke();
+    c.lineWidth = L;
+  };
+  const at = (x: number, y: number, ang: number, draw: () => void): void => {
+    c.save();
+    c.translate(ax + x * s, ay + y * s);
+    c.rotate(ang);
+    draw();
+    c.restore();
+  };
+  // proportions (world px above the feet)
+  const hipY = -9;
+  const neckY = hes ? -26 : -18;
+  const headR = hes ? 3.4 : 3.8;
+  const tw = hes ? 3.2 : 4; // half torso width at the shoulders
+  const armLen = hes ? 10 : 8.5;
+  const shoulderY = neckY + 1.6;
+  const back = { x: -tw + 0.6, y: shoulderY };
+  const front = { x: tw - 0.6, y: shoulderY };
+  const swingBack = (sw * 18 * Math.PI) / 180;
+  const work = hes ? (-30 * Math.PI) / 180 : ((sw * 25 - 15) * Math.PI) / 180;
+
+  const arm = (fill: string): void => shape([[-1.3, 0], [1.3, 0], [1.1, armLen], [-1.1, armLen]], fill);
+  // back arm (behind the body, in shade)
+  at(back.x, back.y, swingBack, () => arm(late ? TARR.shade : t.shade));
+  // legs: one piece on the hip pin
+  at(0, hipY, hes ? 0 : (sw * 12 * Math.PI) / 180, () => {
+    const lw = hes ? 2.6 : 3.4;
+    shape([[-lw, 0], [lw, 0], [lw + 0.4, -hipY], [0.6, -hipY], [0, 3], [-0.6, -hipY], [-lw - 0.4, -hipY]], late ? TARR.shade : hes ? "#2B2422" : DRIFT.shade);
+  });
+  // torso (Hesper: a long coat down to the ankles)
+  if (hes) {
+    shape([[ax / s - tw, ay / s + neckY], [ax / s + tw, ay / s + neckY], [ax / s + tw + 2.2, ay / s - 3], [ax / s - tw - 2.2, ay / s - 3]], t.base);
+    shape([[ax / s + 0.6, ay / s + neckY + 0.6], [ax / s + tw - 0.4, ay / s + neckY + 0.6], [ax / s + tw + 1.6, ay / s - 3.6], [ax / s + 0.6, ay / s - 3.6]], t.shade);
+    // terracotta striped sash, shoulder to hip
+    at(0, 0, 0, () => {
+      c.save();
+      c.beginPath();
+      c.moveTo(-tw * s, (neckY + 1) * s);
+      c.lineTo((-tw + 2.4) * s, (neckY + 0.2) * s);
+      c.lineTo((tw + 1.8) * s, (hipY - 2) * s);
+      c.lineTo((tw - 0.6) * s, (hipY - 0.6) * s);
+      c.closePath();
+      c.fillStyle = STRIPE.base;
+      c.fill();
+      c.clip();
+      c.strokeStyle = SAIL.light;
+      c.lineWidth = 0.7 * s;
+      for (let k = -2; k < 8; k++) {
+        c.beginPath();
+        c.moveTo((-tw - 2 + k * 2.2) * s, (neckY - 2) * s);
+        c.lineTo((-tw + 2 + k * 2.2) * s, (hipY + 2) * s);
+        c.stroke();
+      }
+      c.restore();
+      c.strokeStyle = INK;
+      c.lineWidth = L * 0.8;
+      c.beginPath();
+      c.moveTo(-tw * s, (neckY + 1) * s);
+      c.lineTo((-tw + 2.4) * s, (neckY + 0.2) * s);
+      c.lineTo((tw + 1.8) * s, (hipY - 2) * s);
+      c.lineTo((tw - 0.6) * s, (hipY - 0.6) * s);
+      c.closePath();
+      c.stroke();
+      c.lineWidth = L;
+    });
+  } else {
+    shape([[ax / s - tw, ay / s + neckY], [ax / s + tw, ay / s + neckY], [ax / s + tw - 0.6, ay / s + hipY + 0.5], [ax / s - tw + 0.6, ay / s + hipY + 0.5]], t.base);
+    shape([[ax / s + 0.8, ay / s + neckY + 0.7], [ax / s + tw - 0.6, ay / s + neckY + 0.7], [ax / s + tw - 1.1, ay / s + hipY], [ax / s + 0.8, ay / s + hipY]], t.shade);
+    if (late) {
+      // a ragged hem: the Late wear what their island had when it stopped
+      shape([[ax / s - tw + 0.6, ay / s + hipY], [ax / s - tw - 0.4, ay / s + hipY + 3], [ax / s - 1, ay / s + hipY + 1.5], [ax / s + 1, ay / s + hipY + 3.2], [ax / s + tw + 0.4, ay / s + hipY + 1], [ax / s + tw - 0.6, ay / s + hipY]], TARR.base);
+    }
   }
-  // the tool
-  c.lineWidth = 1.4 * s;
-  c.beginPath();
-  if (job === "field") {
-    c.moveTo(ax + 4 * s, ay - 2 * s);
-    c.lineTo(ax + 5 * s, ay - 16 * s);
-    c.lineTo(ax + 8 * s, ay - 15 * s);
-  } else if (job === "watch") {
-    c.moveTo(ax + 4.5 * s, ay);
-    c.lineTo(ax + 4.5 * s, ay - 20 * s);
-  } else if (job === "raider") {
-    c.moveTo(ax + 3 * s, ay - 8 * s);
-    c.lineTo(ax + 8 * s, ay - 14 * s);
-  } else if (job === "clockworks") {
-    c.arc(ax + 5 * s, ay - 8 * s, 1.8 * s, 0, Math.PI * 2);
-  } else if (job === "trade") {
-    c.rect(ax + 3 * s, ay - 9 * s, 4 * s, 4 * s);
-  }
-  c.stroke();
+  // head: two ink dots, no mouth
+  at(0, neckY - headR + 0.6, sw * 0.05, () => {
+    c.beginPath();
+    c.arc(0, 0, headR * s, 0, Math.PI * 2);
+    c.fillStyle = skin;
+    c.fill();
+    c.stroke();
+    if (late) {
+      // a hood
+      shape([[-headR - 0.5, 1], [-headR + 0.2, -headR + 0.4], [0, -headR - 1.2], [headR - 0.2, -headR + 0.4], [headR + 0.5, 1], [headR - 1.2, -0.4], [-headR + 1.2, -0.4]], TARR.base);
+    }
+    c.fillStyle = late ? PAPER_DOT : INK;
+    for (const dx of [0.4, 2]) {
+      c.beginPath();
+      c.arc(dx * s, 0.3 * s, 0.55 * s, 0, Math.PI * 2);
+      c.fill();
+    }
+  });
+  // front arm + prop on the shoulder pin
+  at(front.x, front.y, work, () => {
+    arm(late ? TARR.base : t.light);
+    c.translate(0, armLen * s);
+    c.rotate(-work * 0.8); // props stay roughly upright in the hand
+    prop(c, s, job, L);
+  });
+  pin(ax / s + 0, ay / s + neckY);
+  pin(ax / s + front.x, ay / s + front.y);
+  pin(ax / s + back.x, ay / s + back.y);
+  pin(ax / s + 0, ay / s + hipY);
 }
+const PAPER_DOT = "#E8DCC4";
+
+/** The prop in the front hand (origin at the hand). */
+function prop(c: Ctx, s: number, job: Job, L: number): void {
+  c.strokeStyle = INK;
+  c.lineWidth = L;
+  const box = (x: number, y: number, w: number, h: number, fill: string) => {
+    c.beginPath();
+    c.rect(x * s, y * s, w * s, h * s);
+    c.fillStyle = fill;
+    c.fill();
+    c.stroke();
+  };
+  if (job === "field") {
+    // a hoe
+    c.beginPath();
+    c.moveTo(0, -9 * s);
+    c.lineTo(0, 7 * s);
+    c.stroke();
+    box(-0.5, 5.5, 3.6, 1.8, GNOMON_GREY);
+  } else if (job === "watch") {
+    // a spear
+    c.beginPath();
+    c.moveTo(0, -16 * s);
+    c.lineTo(0, 5 * s);
+    c.stroke();
+    c.beginPath();
+    c.moveTo(-1.3 * s, -15 * s);
+    c.lineTo(0, -19 * s);
+    c.lineTo(1.3 * s, -15 * s);
+    c.closePath();
+    c.fillStyle = GNOMON_GREY;
+    c.fill();
+    c.stroke();
+  } else if (job === "clockworks") {
+    // a brass cog
+    c.beginPath();
+    for (let k = 0; k < 16; k++) {
+      const r = (k % 2 ? 2.2 : 3) * s, a = (k / 16) * Math.PI * 2;
+      c.lineTo(Math.cos(a) * r, 1.5 * s + Math.sin(a) * r);
+    }
+    c.closePath();
+    c.fillStyle = BRASS_PIN;
+    c.fill();
+    c.stroke();
+  } else if (job === "trade") box(-2.5, -0.5, 5, 4, SAIL.shade); // a sack of goods
+  else if (job === "raider") {
+    // an oar from some other age
+    c.beginPath();
+    c.moveTo(0, -12 * s);
+    c.lineTo(0, 6 * s);
+    c.stroke();
+    box(-1.2, 4, 2.4, 5, DRIFT.base);
+  } else if (job === "hesper") {
+    // the ledger: oak boards, paper edge
+    box(-3.4, -1.5, 6.8, 4.6, "#72583F");
+    c.fillStyle = SAIL.light;
+    c.fillRect(-3 * s, 2.2 * s, 6 * s, 0.7 * s);
+  }
+}
+const GNOMON_GREY = "#A39A8A";
 
 /** A raider longboat, side view in iso (bow to the right), anchor at the waterline centre. */
 export function drawBoat(c: Ctx, ax: number, ay: number, s: number, sail: boolean): void {

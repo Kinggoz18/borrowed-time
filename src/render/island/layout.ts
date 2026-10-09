@@ -127,6 +127,8 @@ export function layoutIsland(st: IslandState, opts: { dusk?: boolean } = {}): Is
   // Hesper's tent on the eastern shore (LORE.md): just outside the ring, to the right
   const tc = cellFront(r + 2, -r + 1);
   things.push({ frame: "tent", x: tc.x, y: tc.y, z: depth(r + 2, -r + 1, 10) });
+  // Hesper waits at her tent flap with the ledger
+  things.push({ frame: "p/hesper/0", x: tc.x - 30, y: tc.y + 10, z: depth(r + 2, -r + 1, 11) });
   const top = cellFront(-S, -S), bot = cellFront(S, S), left = cellFront(-S, S), right = cellFront(S, -S);
   const gate = cellFront(r + 1, 0);
   // fit the ring edge to edge: the island fills the phone's width (owner feedback)
