@@ -421,14 +421,15 @@ None of these are in the plan. The 2.5D isometric look, a few dozen units and sp
 
 Borrowed Time is the heaviest of the three games: a dense isometric city, a raid, particles and full-screen day/night lighting at once. Web-on-Android has to prove it can carry that before we commit.
 
-- **The stress scene (PixiJS v8 + Capacitor APK, no game logic) uses final-weight art, not greybox.** The final art will be much richer than the prototype, so the gate measures the real load. Use a finished art sample, or stand-in textures and atlases at **final resolution, layer count, normal maps/2D lighting, bloom and particle counts**. What it shows:
+- **The stress scene (PixiJS v8 + Capacitor APK, no game logic) uses final-weight art, not greybox.** The final art will be much richer than the prototype, so the gate measures the real load. Use a finished art sample, or stand-in textures and atlases at **final resolution, layer count, bloom and particle counts**. Light is **baked into the painted art** (`ART_BIBLE.md` §5, decision D3), so the baseline has no normal maps. What it shows:
   - City tier at max density: 21×21 lots built at looks 5–7 (2×2/3×3 footprints, merged cottage blocks), the full 7th-stage palisade ring, drawn outskirts and docks, 48 crowd clusters
   - 50 villagers with jobs and paths, 24 raiders, boats, arrows, and the era transformation cinematic
   - fire on 6 buildings, 300 particles, window glows
   - the grey/colour shader on half the lots
   - the full-screen tint
   - a looping day → dusk → night → dawn cycle, with the camera panning and zooming
-  - final-weight effects: normal-mapped 2D lighting with the moving sun plus window/torch point lights, bloom at its final settings, and the final particle counts (no placeholder shortcuts)
+  - final-weight effects: the full-screen time-of-day tint over baked-light sprites, window/torch glow sprites, the gnomon shadow sweep, bloom at its final settings, and the final particle counts (no placeholder shortcuts)
+  - **optional second pass (high tier only):** normal-mapped 2D lighting with the moving sun. It ships only if this pass also meets every check below; otherwise baked light is final (`ART_BIBLE.md` decision D3)
 - **Target devices:** a cheap/mid Android phone with 3–4 GB RAM, an older Mali (G52/G57-class) or Adreno (610/618-class) GPU, and Android 11+. Also run it on your own phone.
 - **Pass (all of these, on the target device):**
 
@@ -440,19 +441,19 @@ Borrowed Time is the heaviest of the three games: a dense isometric city, a raid
 | Thermals | No thermal throttling over 10 minutes of continuous worst load: the fps at minute 10 is within 10% of minute 1, and the device doesn't report a throttled state |
 | Texture memory | Within the budget below, measured on the device |
 
-- **Texture memory budget (starting targets, measured on the device):** ≤ 128 MB total GPU memory on the high tier and ≤ 80 MB on the low tier. That counts every atlas, normal map and render target (bloom chain at half resolution, lighting buffer, cached building textures). Textures ship as KTX2/Basis (ASTC/ETC2 on device), with PNG only as a fallback.
+- **Texture memory budget (starting targets, measured on the device):** ≤ 128 MB total GPU memory on the high tier and ≤ 80 MB on the low tier. That counts every atlas and render target (bloom chain at half resolution, cached building textures), plus normal maps and the lighting buffer only if the optional high-tier lighting pass is enabled. Textures ship as KTX2/Basis (ASTC/ETC2 on device), with PNG only as a fallback.
 - **Atlas plan (2048² max, mipmaps only where zoom needs them):**
 
 | Atlas | Contents | Notes |
 |---|---|---|
 | Buildings, one set per era | Only the looks each era can reach (level caps): Colony 5 types × 2, Village 7 × 4, Town 10 × 6, City 13 × 7, for **189 building frames** plus terrace/block variants | Looks 5–7 use 2×2/3×3 footprints. Load only the current era's set (plus the next during the cinematic). Built from modular kits per era (section 11) |
-| Building normals ×2 | Matching normal maps | Same layout as the diffuse atlases |
-| Island, palisade, roads (+ normals) | Terrain, shore, grey-land overlay, wall stages per era (2/4/6/7, 19 in total) × segment/gate/corner, road looks per era (4/6/7), outskirts props per era | Ring pieces are reused, so the atlas stays small |
+| Building normals ×2 (optional, high tier only) | Matching normal maps, only if the optional lighting pass proves itself in the gate | Same layout as the diffuse atlases; not in the shipped baseline |
+| Island, palisade, roads | Terrain, shore, grey-land overlay, wall stages per era (2/4/6/7, 19 in total) × segment/gate/corner, road looks per era (4/6/7), outskirts props per era | Ring pieces are reused, so the atlas stays small |
 | Units | Villagers in era costume, named notables, raiders and captains, boats, Hesper (never changes era), Margery, with animation frames | One atlas per era, low tier at half resolution |
 | FX (1024²) | Fire, smoke, glow, arrows, colour-flood mask | Additive blending, no normals |
 | UI | HUD, sheets, icons, fonts | Shared `kit/` skin |
 
-  The low tier drops normal maps and bloom, and loads half-resolution atlases.
+  The low tier drops bloom and loads half-resolution atlases (exported separately with heavier lines, `ART_BIBLE.md` §2). Normal maps never ship on the low tier.
 - **Re-run the gate whenever the art direction changes:** a new style, extra layers, new lighting or post effects, bigger atlases, or higher particle counts. A failing re-run blocks that art change until it passes, or until we cut weight.
 - **Evidence:** an on-screen fps/frame-time overlay, a CSV log of frame times per second, the startup time, a 10-minute run per device, and a short screen recording.
 - **Fail = switch Borrowed Time to Unity (2.5D isometric, URP) before writing game code.** The pure TS rules and sim gates are cheap to re-express in C#. The shared `kit/` stays with the web games. We don't patch around a failed gate with more caching.
@@ -550,7 +551,7 @@ This is software-rendered headless Chrome, not a phone GPU, so treat it as a san
 ## 7. Phases and gates
 | Phase | Size | Done when (evidence) |
 |---|---|---|
-| **0. Performance gate** | S | The section 5 stress scene, with **final-weight art** (finished sample or stand-ins at final resolution, layers, normal maps/2D lighting, bloom and particles), runs as an APK on a 3–4 GB, Mali-G52/Adreno-610-class phone and on your phone. It passes all four checks (60 fps typical, ≥ 30 fps steady at worst load, startup under about 3 s, no throttling over 10 min), and stays within the texture memory budget. Frame-time CSVs and a recording are in hand. **No game code until this passes. Fail = switch to Unity.** Re-run it whenever the art direction changes. |
+| **0. Performance gate** | S | The section 5 stress scene, with **final-weight art** (finished sample or stand-ins at final resolution, layers, baked light, bloom and particles; normal-mapped lighting only as the optional high-tier pass), runs as an APK on a 3–4 GB, Mali-G52/Adreno-610-class phone and on your phone. It passes all four checks (60 fps typical, ≥ 30 fps steady at worst load, startup under about 3 s, no throttling over 10 min), and stays within the texture memory budget. Frame-time CSVs and a recording are in hand. **No game code until this passes. Fail = switch to Unity.** Re-run it whenever the art direction changes. |
 | **1. Core + greybox** | M | TS rules at parity with `prototype.html` v2, with all section 6 sim gates green in CI. The Pixi isometric greybox plays empty land → Village end to end: ring, upgrades, borrow, dusk decisions, seizure. `IslandSnapshot`, `resolveRaid` and the event log are in place, local only. A 60 fps APK on your phone. |
 | **2. Vertical slice** | L | All 4 tiers and their 7 tier systems, with City using 2×2/3×3 footprints, merged blocks, outskirts and zoom. Art direction per section 11: the Colony and Village eras fully, Town and City at greybox+, and the era transformation cinematic. People on screen, the Charter, naming, the crest, notables, Hesper's trust and the chronicle. A tester reaches Village in 10–15 min. Lore beats wired. Pizzazz #1–#3. Offline-hours cap. 5 testers play 20 minutes without help and can say what borrowing costs. Ad clips recorded. |
 | **3. Ad creative test** | S | Results in hand and a go / no-go on the hook. Budget only with your approval. |
@@ -606,7 +607,8 @@ Order, in small verified chunks (tests first for each):
    48 crowd clusters), 16 villagers, 24 raiders,
    boats, arrows, fire, 300 particles, grey shader, full-screen day/night tint, looping
    lighting, camera pan/zoom. FINAL-WEIGHT ART, not greybox: stand-in KTX2 atlases at final
-   resolution and layer count per the atlas plan, normal maps with 2D lighting, bloom and
+   resolution and layer count per the atlas plan, light baked into the art (no normal maps in
+   the baseline; an optional high-tier normal-map pass is measured separately), bloom and
    final particle counts. On-screen fps overlay, per-second frame-time CSV, GPU memory readout.
    Build the APK and stop. I test it on a 3-4 GB RAM phone (older Mali-G52/Adreno-610
    class) and on my phone. Pass = 60 fps typical, never below a steady 30 fps at worst
@@ -674,10 +676,10 @@ The City era drifts towards Aster's look on purpose: we may be building what we 
 - Grey land reads the same everywhere: desaturated with a hatch.
 - One light direction, from the sun on the gnomon.
 - Silhouettes are distinct at phone size (the prototype's contact-sheet test).
-- The era palette changes the materials, never the UI's meaning colours (debt terracotta, safe sage, gold for actions).
+- The era palette changes the materials, never the constants (sea-salt teal, driftwood, sailcloth, tar black, ink, paper) or the UI's meaning colours (debt terracotta, safe green, gold for actions). Exact values, saturation/lightness ceilings and colour-blind rules are in `ART_BIBLE.md` §4.
 
 **Production:**
-- Modular kits per era (roof, wall, trim, props), plus palette ramps.
+- Modular kits per era (roof, wall, trim, props), plus palette ramps. Every era has its own 7-look column per building type (`ART_BIBLE.md` §9); the look table in section 2 is the era-agnostic master.
 - Build the Colony and Village eras first, and gate each era on a contact sheet reviewed at phone size.
 
 ## 12. Multiplayer roadmap (after soft launch, not Phase 1)

@@ -39,7 +39,7 @@ Each season draws one random event:
 
 - **Season:** 6 days. In the prototype there is a raid at dusk on days 2 and 4, and the Long Dusk boss on day 6. The build moves the two raids to unannounced nights (days 2–5) and announces only quiet nights; see `FINAL_PLAN.md` section 3, "Raids are a surprise". A day lasts 12h by default (minimum 7). Each hour pays income/12.
 - **Start:** empty land. Level 1, 8 Hours, 6 people (the first ferry trip; the rest of the 41 founders arrive over the first days, at most 8 a day), no buildings, no wall. The tutorial asks: "Borrow 10 Hours? We're starving."
-- **Build:** everything starts at level 0 and upgrades (cap 20). **The look changes every 3 levels, giving 7 looks** (`stageOf(n) = min(6, floor(n/3))`): rough (L0+), settled (L3+), timber (L6+), sturdy (L9+), stone (L12+), fine (L15+), grand (L18+). The building sheet shows "look k/7 · next look at level X".
+- **Build:** everything starts at level 0 and upgrades (cap 20). **The look changes every 3 levels, giving 7 looks** (`stageOf(n) = min(6, floor(n/3))`): rough (L0+), settled (L3+), timber (L6+), sturdy (L9+), stone (L12+), fine (L15+), grand (L18+). The building sheet shows "look k/7 · next look at level X". The table below is the **era-agnostic master** (what each look *is* for gameplay and footprint). Each era re-draws it in its own materials, with its own 7-look column per type: see `ART_BIBLE.md` §9 (Village written in full, others stubbed).
 
 | Building | rough | settled | timber | sturdy | stone | fine | grand |
 |---|---|---|---|---|---|---|---|
