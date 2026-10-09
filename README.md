@@ -14,13 +14,14 @@ Plan: `docs/FINAL_PLAN_BT.md`. Rules and formulas: `docs/DESIGN_V2.md`. Lore: `d
 1. Install Node 22+ (`brew install node`) and Android Studio. Open Android Studio once so it downloads the SDK.
 2. On the phone: Settings → About phone → tap *Build number* 7 times; then Developer options → *USB debugging* on. Plug it in and accept the prompt.
 3. In the repo: `npm ci`, then **`npm run apk:play`**. It builds the game, syncs Capacitor, runs Gradle and installs `borrowed-time-play.apk` with `adb` if the phone is connected (`brew install android-platform-tools` for `adb`, or use `~/Library/Android/sdk/platform-tools/adb`). Without a cable: AirDrop/Drive the APK to the phone and open it (allow "install unknown apps").
-4. `npm run apk:gate` builds the Phase 0 perf-gate APK (`borrowed-time-gate.apk`, stress scene + perf panel) the same way.
+4. Hold the phone sideways: the game is landscape only. Then follow `docs/PLAYTEST.md`.
+5. `npm run apk:gate` builds the Phase 0 perf-gate APK (`borrowed-time-gate.apk`, stress scene + perf panel) the same way. Perf and stress testing are paused for now (`docs/DECISIONS.md` #16).
 
 ## Run in a browser
 ```bash
 npm install
 npx playwright install chromium   # once, for e2e
-npm run dev                       # http://localhost:5191 (dev build: Debug button in the HUD)
+npm run dev                       # http://localhost:5191 (dev build: a Debug button bottom left)
 ```
 URL options: `?tier=low|mid|high` forces a quality tier; `?stress=1` opens the Phase 0 stress scene.
 
