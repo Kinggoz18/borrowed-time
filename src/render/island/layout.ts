@@ -99,6 +99,7 @@ export function layoutIsland(st: IslandState, opts: { dusk?: boolean } = {}): Is
       const key = `${i},${j}`;
       const isLot = key in st.lots;
       let kind = m >= r + 2 ? "sand" : isLot ? "lot" : "grass";
+      if (isLot && st.lots[key]?.type === "field") kind = "plot";
       if (isLot && roadOn && (i === 0 || j === 0) && st.lots[key] === null && !owner[key]) kind = "road";
       if (m === r + 1 && i === r + 1 && j === 0 && roadOn) kind = "road";
       const p = cellFront(i, j);
@@ -112,7 +113,9 @@ export function layoutIsland(st: IslandState, opts: { dusk?: boolean } = {}): Is
     const p = cellFront(i, j);
     // a 2×2 / 3×3 claim extends behind the owner lot: centre the sprite on the footprint
     const cx = p.x, cy = p.y - ((n - 1) * TH) / 2;
-    things.push({ frame: buildingFrame(era, frameType, stage, grey.has(key)), x: cx, y: cy + ((n - 1) * TH) / 2, z: depth(i, j, 10), key, scale: n * BUILDING_SCALE });
+    // fields are a flush ground decal: do not scale them past the lot (A6)
+    const scale = b.type === "field" ? n : n * BUILDING_SCALE;
+    things.push({ frame: buildingFrame(era, frameType, stage, grey.has(key)), x: cx, y: cy + ((n - 1) * TH) / 2, z: depth(i, j, 10), key, scale });
   }
   const g = cellFront(0, 0);
   things.push({ frame: "gnomon", x: g.x, y: g.y, z: depth(0, 0, 10), key: "0,0" });
@@ -149,3 +152,15 @@ export function layoutIsland(st: IslandState, opts: { dusk?: boolean } = {}): Is
 
 /** Villagers drawn: a sample of the population, capped by the quality tier (FINAL_PLAN_BT.md §5). */
 export const visibleFigures = (pop: number, cap: number): number => Math.max(0, Math.min(cap, Math.ceil(pop / 2)));
+
+/**
+ * Lots that should show corner ticks: every empty lot while placing (Build open or an empty
+ * lot selected), otherwise only the selected lot. Never baked into the ground tile.
+ */
+export function lotCornerKeys(lots: Record<string, unknown> | null, selected: string | null, buildOpen = false): string[] {
+  if (!lots) return [];
+  const empty = Object.keys(lots).filter((k) => lots[k] == null);
+  if (buildOpen || (selected && selected in lots && lots[selected] == null)) return empty;
+  if (selected && selected in lots) return [selected];
+  return [];
+}

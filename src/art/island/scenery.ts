@@ -2,11 +2,13 @@
  * Ground, ring, people, boats and effects for the island stand-ins (ART_BIBLE.md §2, §4, §5, §9).
  * Same rules as the buildings: 2:1 iso, ink outlines, baked 3-step light from the upper left.
  */
-import { BRASS_PIN, DRIFT, FOAM, INK, SAIL, STRIPE, TARR, kitFor, type Era, type Ramp } from "./palette";
+import { DRIFT, FOAM, INK, SAIL, TARR, kitFor, type Era, type EraKit, type Ramp } from "./palette";
 import type { Ctx, Pen } from "./pen";
+export type { Job, PersonAnim, PersonView } from "./people";
+export { ANIM_FRAMES, HESPER_H, JOBS, NOTABLE_JOBS, PERSON_ANIMS, PERSON_H, PERSON_VIEWS, VILLAGER_JOBS, drawPerson, personFrame, personFrameName } from "./people";
 
-export type GroundKind = "grass" | "lot" | "sand" | "road";
-export const GROUND_KINDS: GroundKind[] = ["grass", "lot", "sand", "road"];
+export type GroundKind = "grass" | "lot" | "sand" | "road" | "plot";
+export const GROUND_KINDS: GroundKind[] = ["grass", "lot", "sand", "road", "plot"];
 export const GROUND_VARIANTS = 3;
 
 /** Small deterministic hash for scatter detail. */
@@ -16,48 +18,131 @@ const hash = (a: number, b: number): number => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
-/** One ground tile. Ground tiles have no outer line (they tile); detail strokes use the inner weight. */
+const wob = (v: number, n: number, amt = 0.05): number => amt * (hash(v, n) - 0.5) * 2;
+
+/** One ground tile. Ground tiles have no outer line (they tile); they sit flush, not as raised slabs. */
 export function drawGround(p: Pen, era: Era, kind: GroundKind, v: number): void {
   const k = kitFor(era);
-  const base: Record<GroundKind, Ramp> = { grass: k.grass, lot: k.ground, sand: SAND, road: ROAD };
+  if (kind === "plot") {
+    drawPlot(p, k, v);
+    return;
+  }
+  const base: Record<Exclude<GroundKind, "plot">, Ramp> = { grass: k.grass, lot: k.grass, sand: SAND, road: ROAD };
   const r = base[kind];
   p.diamond(0, 0, 1, 1, 0, r.base, "none");
-  // the edge toward the light is a step lighter, the front edges a step darker: a soft bevel
-  p.poly([p.P(0, 0), p.P(1, 0), p.P(0.94, 0.06), p.P(0.06, 0.06)], r.light, "none");
-  p.poly([p.P(1, 1), p.P(1, 0), p.P(0.94, 0.06), p.P(0.94, 0.94)], r.shade, "none");
+  if (kind === "sand") {
+    // a hint of form, not a bevelled slab
+    p.poly([p.P(0.02, 0.02), p.P(0.98, 0.02), p.P(0.9, 0.1), p.P(0.1, 0.1)], r.light, "none");
+  }
+  if (kind === "grass" || kind === "lot") {
+    if (kind === "lot") {
+      // a small worn patch only — empty lots must read as moss grass, not a tan board
+      p.poly([
+        p.P(0.38 + wob(v, 1, 0.03), 0.40 + wob(v, 2, 0.03), 0),
+        p.P(0.60 + wob(v, 3, 0.03), 0.38 + wob(v, 4, 0.03), 0),
+        p.P(0.62 + wob(v, 5, 0.03), 0.60 + wob(v, 6, 0.03), 0),
+        p.P(0.40 + wob(v, 7, 0.03), 0.62 + wob(v, 8, 0.03), 0),
+      ], k.ground.light, "none");
+    }
+    const nPatches = kind === "lot" ? 2 : 3;
+    for (let n = 0; n < nPatches; n++) {
+      const a = 0.14 + 0.62 * hash(v * 5 + n, 3), b = 0.14 + 0.62 * hash(n + 9, v + 2);
+      const s = 0.07 + 0.09 * hash(n, v);
+      p.poly([
+        p.P(a, b, 0),
+        p.P(a + s + wob(n, v, 0.03), b + wob(n, 4, 0.03), 0),
+        p.P(a + s * 0.85, b + s * 0.9, 0),
+        p.P(a + wob(n, 8, 0.03), b + s * 0.7, 0),
+      ], hash(n, v + 7) > 0.5 ? k.ground.base : k.ground.light, "none");
+    }
+  }
   const c = p.c;
-  for (let n = 0; n < 7; n++) {
-    const a = 0.15 + 0.7 * hash(v * 13 + n, kind.length), b = 0.15 + 0.7 * hash(n * 7 + 3, v + 11);
+  const tufts = kind === "lot" ? 4 : kind === "grass" ? 5 : 5;
+  for (let n = 0; n < tufts; n++) {
+    const a = 0.12 + 0.76 * hash(v * 13 + n, kind.length + v), b = 0.12 + 0.76 * hash(n * 7 + 3, v + 11);
     const [x, y] = p.P(a, b);
-    c.strokeStyle = kind === "grass" ? r.shade : r.light;
+    c.strokeStyle = kind === "grass" || kind === "lot" ? k.grass.shade : r.light;
     c.lineWidth = p.line / 2;
     c.lineCap = "round";
     c.beginPath();
-    if (kind === "grass") {
+    if (kind === "grass" || kind === "lot") {
       c.moveTo(x - 2 * p.s, y);
       c.lineTo(x - 1 * p.s, y - 3 * p.s);
       c.moveTo(x + 1 * p.s, y);
       c.lineTo(x + 2 * p.s, y - 3 * p.s);
-    } else if (kind === "lot") {
-      // furrows of worked earth along the a axis
-      const [x2, y2] = p.P(a + 0.12, b);
-      c.moveTo(x, y);
-      c.lineTo(x2, y2);
     } else {
       c.arc(x, y, 0.8 * p.s, 0, Math.PI * 2);
     }
     c.stroke();
   }
-  if (kind === "lot") {
-    // the stake-and-string border that says "this is a building lot"
-    p.poly([p.P(0.08, 0.08), p.P(0.92, 0.08), p.P(0.92, 0.92), p.P(0.08, 0.92)], null, "inner");
-    for (const [a, b] of [[0.08, 0.08], [0.92, 0.08], [0.92, 0.92], [0.08, 0.92]] as const) p.post(a, b, 0, 4, 0.8, DRIFT.base);
-  }
   if (kind === "road") {
     for (let n = 0; n < 5; n++) {
       const a = 0.2 + 0.6 * hash(n + 40, v), b = 0.2 + 0.6 * hash(v + 9, n + 2);
-      p.diamond(a, b, a + 0.08, b + 0.08, 0, ROAD.light, "inner");
+      p.diamond(a, b, a + 0.08, b + 0.08, 0, ROAD.light, "none");
     }
+    // grass tufts at the corners so the track feathers into neighbouring grass
+    c.strokeStyle = k.grass.shade;
+    c.lineWidth = p.line / 2;
+    for (const [a, b] of [[0.08, 0.12], [0.88, 0.10], [0.10, 0.88], [0.90, 0.86]] as const) {
+      const [x, y] = p.P(a, b);
+      c.beginPath();
+      c.moveTo(x - 2 * p.s, y);
+      c.lineTo(x, y - 3 * p.s);
+      c.moveTo(x + 1.5 * p.s, y);
+      c.lineTo(x + 0.4 * p.s, y - 2.6 * p.s);
+      c.stroke();
+    }
+  }
+}
+
+/** Field soil as a ground decal: height 0, no outline, no shadow, edge feathered into grass. */
+function drawPlot(p: Pen, k: EraKit, v: number): void {
+  p.diamond(0, 0, 1, 1, 0, k.grass.base, "none");
+  const soil = [
+    p.P(0.10 + wob(v, 1), 0.12 + wob(v, 2), 0),
+    p.P(0.50 + wob(v, 3, 0.04), 0.05 + wob(v, 4, 0.03), 0),
+    p.P(0.90 + wob(v, 5), 0.11 + wob(v, 6), 0),
+    p.P(0.95 + wob(v, 7, 0.03), 0.50 + wob(v, 8), 0),
+    p.P(0.88 + wob(v, 9), 0.90 + wob(v, 10), 0),
+    p.P(0.50 + wob(v, 11, 0.04), 0.96 + wob(v, 12, 0.03), 0),
+    p.P(0.10 + wob(v, 13), 0.88 + wob(v, 14), 0),
+    p.P(0.05 + wob(v, 15, 0.03), 0.50 + wob(v, 16), 0),
+  ];
+  p.poly(soil, k.ground.base, "none");
+  const inner = [
+    p.P(0.22 + wob(v, 21, 0.03), 0.24 + wob(v, 22, 0.03), 0),
+    p.P(0.78 + wob(v, 23, 0.03), 0.22 + wob(v, 24, 0.03), 0),
+    p.P(0.80 + wob(v, 25, 0.03), 0.78 + wob(v, 26, 0.03), 0),
+    p.P(0.22 + wob(v, 27, 0.03), 0.80 + wob(v, 28, 0.03), 0),
+  ];
+  p.poly(inner, k.ground.shade, "none");
+  const c = p.c;
+  c.strokeStyle = k.ground.light;
+  c.lineWidth = Math.max(0.6, p.line / 3);
+  c.lineCap = "round";
+  for (let n = 0; n < 5; n++) {
+    const b = 0.22 + n * 0.14 + wob(v, 30 + n, 0.02);
+    c.beginPath();
+    const [x0, y0] = p.P(0.2, b, 0);
+    const [x1, y1] = p.P(0.8, b, 0);
+    c.moveTo(x0, y0);
+    c.lineTo(x1, y1);
+    c.stroke();
+  }
+  // grass tufts along the soil edge so the plot feathers into the neighbouring tiles
+  c.strokeStyle = k.grass.shade;
+  c.lineWidth = p.line / 2;
+  for (let n = 0; n < 8; n++) {
+    const t = n / 8;
+    const a = 0.08 + 0.84 * ((t + hash(v, n + 40)) % 1);
+    const b = n % 2 ? 0.08 + 0.06 * hash(n, v) : 0.86 + 0.08 * hash(v, n);
+    const [x, y] = p.P(n % 2 ? a : n < 4 ? 0.1 : 0.88, n % 2 ? b : a, 0);
+    c.beginPath();
+    c.moveTo(x - 1.5 * p.s, y);
+    c.lineTo(x, y - 2.5 * p.s);
+    c.moveTo(x + 1.5 * p.s, y);
+    c.lineTo(x + 0.4 * p.s, y - 2.2 * p.s);
+    c.stroke();
   }
 }
 const SAND: Ramp = { light: "#E8DCB8", base: "#D9C9A0", shade: "#B9A87F" };
@@ -114,223 +199,6 @@ export function drawGate(p: Pen, stage: number, along: boolean, shut: boolean): 
   p.poly([at(0.02, h), at(0.98, h), at(0.98, h + 3), at(0.02, h + 3)], DRIFT.light);
 }
 
-/** Jobs and their tunic colours (no colour-only meaning: jobs also carry a tool silhouette). */
-export type Job = "field" | "clockworks" | "trade" | "watch" | "raider" | "hesper";
-export const JOBS: Job[] = ["field", "clockworks", "trade", "watch", "raider", "hesper"];
-/** Costume by job (ART_BIBLE.md §10): field moss, Clockworks oak, watch driftwood, trade ochre. */
-const TUNIC: Record<Job, Ramp> = {
-  field: { light: "#9DAA6E", base: "#7E8F55", shade: "#5C6B3D" },
-  clockworks: { light: "#987554", base: "#72583F", shade: "#4F3C2C" },
-  trade: { light: "#DDB879", base: "#BD9D68", shade: "#8F754F" },
-  watch: DRIFT,
-  raider: TARR,
-  hesper: { light: "#5A4E48", base: "#3F3633", shade: "#2B2422" }, // her long dark coat
-};
-const SKIN = "#E2B98F";
-const LATE_SKIN = "#7B7366"; // the Late are tar-grey silhouettes (ART_BIBLE.md §10)
-
-/** Figure height in world px: villagers 0.4 of a tile, Hesper 0.55 (ART_BIBLE.md §10). */
-export const PERSON_H = 26;
-export const HESPER_H = 35;
-/** Atlas frame for a figure (world units), anchored at the feet. */
-export const personFrame = (job: Job) => (job === "hesper" ? { w: 26, h: 42, ax: 13, ay: 40 } : { w: 28, h: 34, ax: 14, ay: 32 });
-
-/**
- * A paper puppet (ART_BIBLE.md §10): six flat parts (legs in one piece, torso, head, two arms,
- * prop), ink outlines, brass split pins at the neck, shoulders and hip, two ink dots for a face.
- * Frame 0/1 are the two baked poses (legs ±12°, the working arm ±25°).
- */
-export function drawPerson(c: Ctx, ax: number, ay: number, s: number, job: Job, frame: number): void {
-  const L = Math.max(1.2, 0.9 * s);
-  const t = TUNIC[job];
-  const late = job === "raider";
-  const hes = job === "hesper";
-  const skin = late ? LATE_SKIN : SKIN;
-  const sw = frame ? 1 : -1;
-  c.lineJoin = "round";
-  c.lineCap = "round";
-  c.strokeStyle = INK;
-  c.lineWidth = L;
-  const shape = (pts: number[][], fill: string): void => {
-    c.beginPath();
-    pts.forEach(([x, y], k) => (k ? c.lineTo(x * s, y * s) : c.moveTo(x * s, y * s)));
-    c.closePath();
-    c.fillStyle = fill;
-    c.fill();
-    c.stroke();
-  };
-  const pin = (x: number, y: number): void => {
-    c.beginPath();
-    c.arc(x * s, y * s, 1.05 * s, 0, Math.PI * 2);
-    c.fillStyle = BRASS_PIN;
-    c.fill();
-    c.lineWidth = Math.max(0.8, 0.45 * s);
-    c.stroke();
-    c.lineWidth = L;
-  };
-  const at = (x: number, y: number, ang: number, draw: () => void): void => {
-    c.save();
-    c.translate(ax + x * s, ay + y * s);
-    c.rotate(ang);
-    draw();
-    c.restore();
-  };
-  // proportions (world px above the feet)
-  const hipY = -9;
-  const neckY = hes ? -26 : -18;
-  const headR = hes ? 3.4 : 3.8;
-  const tw = hes ? 3.2 : 4; // half torso width at the shoulders
-  const armLen = hes ? 10 : 8.5;
-  const shoulderY = neckY + 1.6;
-  const back = { x: -tw + 0.6, y: shoulderY };
-  const front = { x: tw - 0.6, y: shoulderY };
-  const swingBack = (sw * 18 * Math.PI) / 180;
-  const work = hes ? (-30 * Math.PI) / 180 : ((sw * 25 - 15) * Math.PI) / 180;
-
-  const arm = (fill: string): void => shape([[-1.3, 0], [1.3, 0], [1.1, armLen], [-1.1, armLen]], fill);
-  // back arm (behind the body, in shade)
-  at(back.x, back.y, swingBack, () => arm(late ? TARR.shade : t.shade));
-  // legs: one piece on the hip pin
-  at(0, hipY, hes ? 0 : (sw * 12 * Math.PI) / 180, () => {
-    const lw = hes ? 2.6 : 3.4;
-    shape([[-lw, 0], [lw, 0], [lw + 0.4, -hipY], [0.6, -hipY], [0, 3], [-0.6, -hipY], [-lw - 0.4, -hipY]], late ? TARR.shade : hes ? "#2B2422" : DRIFT.shade);
-  });
-  // torso (Hesper: a long coat down to the ankles)
-  if (hes) {
-    shape([[ax / s - tw, ay / s + neckY], [ax / s + tw, ay / s + neckY], [ax / s + tw + 2.2, ay / s - 3], [ax / s - tw - 2.2, ay / s - 3]], t.base);
-    shape([[ax / s + 0.6, ay / s + neckY + 0.6], [ax / s + tw - 0.4, ay / s + neckY + 0.6], [ax / s + tw + 1.6, ay / s - 3.6], [ax / s + 0.6, ay / s - 3.6]], t.shade);
-    // terracotta striped sash, shoulder to hip
-    at(0, 0, 0, () => {
-      c.save();
-      c.beginPath();
-      c.moveTo(-tw * s, (neckY + 1) * s);
-      c.lineTo((-tw + 2.4) * s, (neckY + 0.2) * s);
-      c.lineTo((tw + 1.8) * s, (hipY - 2) * s);
-      c.lineTo((tw - 0.6) * s, (hipY - 0.6) * s);
-      c.closePath();
-      c.fillStyle = STRIPE.base;
-      c.fill();
-      c.clip();
-      c.strokeStyle = SAIL.light;
-      c.lineWidth = 0.7 * s;
-      for (let k = -2; k < 8; k++) {
-        c.beginPath();
-        c.moveTo((-tw - 2 + k * 2.2) * s, (neckY - 2) * s);
-        c.lineTo((-tw + 2 + k * 2.2) * s, (hipY + 2) * s);
-        c.stroke();
-      }
-      c.restore();
-      c.strokeStyle = INK;
-      c.lineWidth = L * 0.8;
-      c.beginPath();
-      c.moveTo(-tw * s, (neckY + 1) * s);
-      c.lineTo((-tw + 2.4) * s, (neckY + 0.2) * s);
-      c.lineTo((tw + 1.8) * s, (hipY - 2) * s);
-      c.lineTo((tw - 0.6) * s, (hipY - 0.6) * s);
-      c.closePath();
-      c.stroke();
-      c.lineWidth = L;
-    });
-  } else {
-    shape([[ax / s - tw, ay / s + neckY], [ax / s + tw, ay / s + neckY], [ax / s + tw - 0.6, ay / s + hipY + 0.5], [ax / s - tw + 0.6, ay / s + hipY + 0.5]], t.base);
-    shape([[ax / s + 0.8, ay / s + neckY + 0.7], [ax / s + tw - 0.6, ay / s + neckY + 0.7], [ax / s + tw - 1.1, ay / s + hipY], [ax / s + 0.8, ay / s + hipY]], t.shade);
-    if (late) {
-      // a ragged hem: the Late wear what their island had when it stopped
-      shape([[ax / s - tw + 0.6, ay / s + hipY], [ax / s - tw - 0.4, ay / s + hipY + 3], [ax / s - 1, ay / s + hipY + 1.5], [ax / s + 1, ay / s + hipY + 3.2], [ax / s + tw + 0.4, ay / s + hipY + 1], [ax / s + tw - 0.6, ay / s + hipY]], TARR.base);
-    }
-  }
-  // head: two ink dots, no mouth
-  at(0, neckY - headR + 0.6, sw * 0.05, () => {
-    c.beginPath();
-    c.arc(0, 0, headR * s, 0, Math.PI * 2);
-    c.fillStyle = skin;
-    c.fill();
-    c.stroke();
-    if (late) {
-      // a hood
-      shape([[-headR - 0.5, 1], [-headR + 0.2, -headR + 0.4], [0, -headR - 1.2], [headR - 0.2, -headR + 0.4], [headR + 0.5, 1], [headR - 1.2, -0.4], [-headR + 1.2, -0.4]], TARR.base);
-    }
-    c.fillStyle = late ? PAPER_DOT : INK;
-    for (const dx of [0.4, 2]) {
-      c.beginPath();
-      c.arc(dx * s, 0.3 * s, 0.55 * s, 0, Math.PI * 2);
-      c.fill();
-    }
-  });
-  // front arm + prop on the shoulder pin
-  at(front.x, front.y, work, () => {
-    arm(late ? TARR.base : t.light);
-    c.translate(0, armLen * s);
-    c.rotate(-work * 0.8); // props stay roughly upright in the hand
-    prop(c, s, job, L);
-  });
-  pin(ax / s + 0, ay / s + neckY);
-  pin(ax / s + front.x, ay / s + front.y);
-  pin(ax / s + back.x, ay / s + back.y);
-  pin(ax / s + 0, ay / s + hipY);
-}
-const PAPER_DOT = "#E8DCC4";
-
-/** The prop in the front hand (origin at the hand). */
-function prop(c: Ctx, s: number, job: Job, L: number): void {
-  c.strokeStyle = INK;
-  c.lineWidth = L;
-  const box = (x: number, y: number, w: number, h: number, fill: string) => {
-    c.beginPath();
-    c.rect(x * s, y * s, w * s, h * s);
-    c.fillStyle = fill;
-    c.fill();
-    c.stroke();
-  };
-  if (job === "field") {
-    // a hoe
-    c.beginPath();
-    c.moveTo(0, -9 * s);
-    c.lineTo(0, 7 * s);
-    c.stroke();
-    box(-0.5, 5.5, 3.6, 1.8, GNOMON_GREY);
-  } else if (job === "watch") {
-    // a spear
-    c.beginPath();
-    c.moveTo(0, -16 * s);
-    c.lineTo(0, 5 * s);
-    c.stroke();
-    c.beginPath();
-    c.moveTo(-1.3 * s, -15 * s);
-    c.lineTo(0, -19 * s);
-    c.lineTo(1.3 * s, -15 * s);
-    c.closePath();
-    c.fillStyle = GNOMON_GREY;
-    c.fill();
-    c.stroke();
-  } else if (job === "clockworks") {
-    // a brass cog
-    c.beginPath();
-    for (let k = 0; k < 16; k++) {
-      const r = (k % 2 ? 2.2 : 3) * s, a = (k / 16) * Math.PI * 2;
-      c.lineTo(Math.cos(a) * r, 1.5 * s + Math.sin(a) * r);
-    }
-    c.closePath();
-    c.fillStyle = BRASS_PIN;
-    c.fill();
-    c.stroke();
-  } else if (job === "trade") box(-2.5, -0.5, 5, 4, SAIL.shade); // a sack of goods
-  else if (job === "raider") {
-    // an oar from some other age
-    c.beginPath();
-    c.moveTo(0, -12 * s);
-    c.lineTo(0, 6 * s);
-    c.stroke();
-    box(-1.2, 4, 2.4, 5, DRIFT.base);
-  } else if (job === "hesper") {
-    // the ledger: oak boards, paper edge
-    box(-3.4, -1.5, 6.8, 4.6, "#72583F");
-    c.fillStyle = SAIL.light;
-    c.fillRect(-3 * s, 2.2 * s, 6 * s, 0.7 * s);
-  }
-}
-const GNOMON_GREY = "#A39A8A";
-
 /** A raider longboat, side view in iso (bow to the right), anchor at the waterline centre. */
 export function drawBoat(c: Ctx, ax: number, ay: number, s: number, sail: boolean): void {
   const L = s >= 2 ? 3 : 2;
@@ -376,7 +244,29 @@ export function drawBoat(c: Ctx, ax: number, ay: number, s: number, sail: boolea
 /** Effects: flat painted shapes, no gradients except the soft glows (§7). */
 export type Fx = "fire" | "smoke" | "glow" | "spark" | "foam" | "dust";
 export const FX: Fx[] = ["fire", "smoke", "glow", "spark", "foam", "dust"];
-export function drawFx(c: Ctx, w: number, h: number, fx: Fx, s: number): void {
+export const FLAG_FRAMES = 3;
+export function drawFlagFrame(c: Ctx, w: number, h: number, s: number, frame: number): void {
+  const L = s >= 2 ? 2 : 1.5;
+  c.strokeStyle = INK;
+  c.lineWidth = L;
+  c.lineCap = "round";
+  c.beginPath();
+  c.moveTo(1.5 * s, h - 1 * s);
+  c.lineTo(1.5 * s, 1 * s);
+  c.stroke();
+  const wave = (frame % 3) * 1.4 * s;
+  c.beginPath();
+  c.moveTo(1.5 * s, 1.4 * s);
+  c.quadraticCurveTo(w * 0.55 + wave, 2.2 * s, w - 1.5 * s, 3.2 * s + wave * 0.2);
+  c.quadraticCurveTo(w * 0.5 + wave * 0.4, 6.5 * s, 1.5 * s, 7.2 * s);
+  c.closePath();
+  c.fillStyle = "#B8633F";
+  c.fill();
+  c.stroke();
+  c.fillStyle = SAIL.base;
+  c.fillRect(2.2 * s, 2.8 * s, 1.2 * s, 3.2 * s);
+}
+export function drawFx(c: Ctx, w: number, h: number, fx: Fx, s: number, variant = 0): void {
   const cx = w / 2, cy = h / 2;
   c.lineJoin = "round";
   if (fx === "fire") {
@@ -399,7 +289,8 @@ export function drawFx(c: Ctx, w: number, h: number, fx: Fx, s: number): void {
     c.fillStyle = fx === "smoke" ? "#ECE6DA" : "#D9C9A0";
     c.strokeStyle = "rgba(61,52,40,0.5)";
     c.lineWidth = s;
-    for (const [dx, dy, r] of [[-0.18, 0.08, 0.3], [0.16, 0.1, 0.28], [0, -0.12, 0.32]] as const) {
+    const sh = (variant % 3) * 0.06;
+    for (const [dx, dy, r] of [[-0.18 + sh, 0.08, 0.3], [0.16, 0.1 - sh, 0.28], [0 - sh, -0.12, 0.32]] as const) {
       c.beginPath();
       c.arc(cx + dx * w, cy + dy * h, r * w, 0, Math.PI * 2);
       c.fill();
