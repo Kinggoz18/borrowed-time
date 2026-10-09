@@ -8,7 +8,6 @@ import { useRuleset } from "../src/core/rules";
 process.env.CORE = path.resolve(__dirname, "reference/prototype-core.js");
 process.env.RULES = "build";
 const require = createRequire(import.meta.url);
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const ref = require("./reference/sim-test.cjs") as { campaign: (n: string, seed: number, seasons: number) => RefCampaign };
 interface RefCampaign {
   seasons: unknown[];
