@@ -36,35 +36,30 @@ export function drawGround(p: Pen, era: Era, kind: GroundKind, v: number): void 
   }
   if (kind === "grass" || kind === "lot") {
     if (kind === "lot") {
-      // dirt apron in the middle, grass rim so lots blend into neighbouring grass (no bevel)
+      // a small worn patch only — empty lots must read as moss grass, not a tan board
       p.poly([
-        p.P(0.20 + wob(v, 1, 0.04), 0.22 + wob(v, 2, 0.04), 0),
-        p.P(0.78 + wob(v, 3, 0.04), 0.20 + wob(v, 4, 0.04), 0),
-        p.P(0.82 + wob(v, 5, 0.04), 0.78 + wob(v, 6, 0.04), 0),
-        p.P(0.22 + wob(v, 7, 0.04), 0.82 + wob(v, 8, 0.04), 0),
+        p.P(0.38 + wob(v, 1, 0.03), 0.40 + wob(v, 2, 0.03), 0),
+        p.P(0.60 + wob(v, 3, 0.03), 0.38 + wob(v, 4, 0.03), 0),
+        p.P(0.62 + wob(v, 5, 0.03), 0.60 + wob(v, 6, 0.03), 0),
+        p.P(0.40 + wob(v, 7, 0.03), 0.62 + wob(v, 8, 0.03), 0),
       ], k.ground.light, "none");
-      p.poly([
-        p.P(0.32 + wob(v, 11, 0.03), 0.34 + wob(v, 12, 0.03), 0),
-        p.P(0.68 + wob(v, 13, 0.03), 0.32 + wob(v, 14, 0.03), 0),
-        p.P(0.70 + wob(v, 15, 0.03), 0.68 + wob(v, 16, 0.03), 0),
-        p.P(0.34 + wob(v, 17, 0.03), 0.70 + wob(v, 18, 0.03), 0),
-      ], k.ground.base, "none");
     }
-    const nPatches = kind === "lot" ? 3 : 4;
+    const nPatches = kind === "lot" ? 2 : 3;
     for (let n = 0; n < nPatches; n++) {
-      const a = 0.10 + 0.72 * hash(v * 5 + n, 3), b = 0.10 + 0.72 * hash(n + 9, v + 2);
-      const s = 0.10 + 0.14 * hash(n, v);
+      const a = 0.14 + 0.62 * hash(v * 5 + n, 3), b = 0.14 + 0.62 * hash(n + 9, v + 2);
+      const s = 0.07 + 0.09 * hash(n, v);
       p.poly([
         p.P(a, b, 0),
-        p.P(a + s + wob(n, v, 0.04), b + wob(n, 4, 0.03), 0),
+        p.P(a + s + wob(n, v, 0.03), b + wob(n, 4, 0.03), 0),
         p.P(a + s * 0.85, b + s * 0.9, 0),
-        p.P(a + wob(n, 8, 0.04), b + s * 0.7, 0),
-      ], hash(n, v + 7) > 0.5 ? k.ground.base : kind === "lot" ? k.ground.shade : k.ground.light, "none");
+        p.P(a + wob(n, 8, 0.03), b + s * 0.7, 0),
+      ], hash(n, v + 7) > 0.5 ? k.ground.base : k.ground.light, "none");
     }
   }
   const c = p.c;
-  for (let n = 0; n < 7; n++) {
-    const a = 0.15 + 0.7 * hash(v * 13 + n, kind.length), b = 0.15 + 0.7 * hash(n * 7 + 3, v + 11);
+  const tufts = kind === "lot" ? 4 : kind === "grass" ? 5 : 5;
+  for (let n = 0; n < tufts; n++) {
+    const a = 0.12 + 0.76 * hash(v * 13 + n, kind.length + v), b = 0.12 + 0.76 * hash(n * 7 + 3, v + 11);
     const [x, y] = p.P(a, b);
     c.strokeStyle = kind === "grass" || kind === "lot" ? k.grass.shade : r.light;
     c.lineWidth = p.line / 2;
