@@ -116,6 +116,8 @@ export class IslandView {
   private crests: Crest[] = [];
   private tufts: Tuft[] = [];
   private gulls: { sp: Sprite; spec: GullSpec }[] = [];
+  private horizonSails: { g: Graphics; baseX: number; baseY: number }[] = [];
+  private sailDrift = 0;
   private clouds: { sp: Sprite; x: number; y: number; v: number }[] = [];
   private swayers: { sp: Piece; frames: Texture[]; ph: number }[] = [];
   /** lamplight halos on lit buildings (dusk and night), additive pixel dither */
@@ -253,12 +255,14 @@ export class IslandView {
     this.tufts = [];
     this.gulls = [];
     this.clouds = [];
+    this.clearHorizonSails();
     this.seaStep = -1;
   }
 
   /** Re-lays the island for the state. Cheap enough to call after every command. */
   sync(st: IslandState, opts: { dusk?: boolean } = {}): void {
     this.lastState = st;
+    if (st.phase === "day" && st.hour === 0) this.clearHorizonSails();
     this.ensureAtlas(st);
     const prevR = this.layout?.r;
     this.layout = layoutIsland(st, { ...opts, era: (this.era || undefined) as Era | undefined, pixel: (f) => this.art.has(f), shoreFrame: (m) => this.art.shoreFrame(m) });
@@ -1389,7 +1393,50 @@ export class IslandView {
     return this.era;
   }
 
-  stats(): { sprites: number; walkers: number; zoom: number; fitZoom: number; sea: string; gulls: number; crests: number; tier: string; halos: number } {
+  clearHorizonSails(): void {
+    for (const s of this.horizonSails) s.g.destroy();
+    this.horizonSails = [];
+    this.sailDrift = 0;
+  }
+
+  /** Distant sails at the noon call; drift 0–1 is hour / dayLen. */
+  setHorizonSails(count: number, tint: "grey" | "hull" | null, drift: number): void {
+    this.clearHorizonSails();
+    if (!count || !tint || prefersReducedMotion() || !this.layout) return;
+    if (this.amb.gulls === 0) return;
+    if (this.amb.gulls === 3) count = Math.min(count, 4);
+    const fill = tint === "hull" ? 0x2a1a14 : 0x5c6368;
+    const b = this.layout.fitBounds;
+    for (let i = 0; i < count; i++) {
+      const g = new Graphics();
+      g.eventMode = "none";
+      g.poly([0, 0, 10, 18, -10, 18]).fill(fill);
+      g.poly([0, 0, 4, 18, -4, 18]).fill(0x8a9199);
+      const baseX = b.x + b.w * (0.12 + (i + 1) / (count + 2) * 0.76);
+      const baseY = b.y - 24 - (i % 3) * 10;
+      g.position.set(baseX, baseY);
+      this.sea.addChild(g);
+      this.horizonSails.push({ g, baseX, baseY });
+    }
+    this.sailDrift = drift;
+    this.applyHorizonDrift();
+  }
+
+  setHorizonDrift(drift: number): void {
+    if (!this.horizonSails.length) return;
+    this.sailDrift = drift;
+    this.applyHorizonDrift();
+  }
+
+  private applyHorizonDrift(): void {
+    const noon = 0.6;
+    const t = Math.min(1, Math.max(0, (this.sailDrift - noon) / (1 - noon + 0.001)));
+    for (const s of this.horizonSails) {
+      s.g.position.set(this.snap(s.baseX + t * 72), this.snap(s.baseY + t * 28));
+    }
+  }
+
+  stats(): { sprites: number; walkers: number; zoom: number; fitZoom: number; sea: string; gulls: number; crests: number; tier: string; halos: number; horizonSails: number } {
     return {
       sprites: this.objects.children.length + this.ground.children.length + this.shore.children.length,
       walkers: this.walkers.length,
@@ -1400,6 +1447,7 @@ export class IslandView {
       gulls: this.gulls.length,
       crests: this.crests.filter((c) => c.on).length,
       tier: this.cfg.tier,
+      horizonSails: this.horizonSails.length,
     };
   }
 }
