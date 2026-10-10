@@ -3,7 +3,7 @@
  * the boot-time atlas with plain sprites (one batch per atlas page). Reads IslandState; never
  * changes it. Animations are presentation only: the rules already resolved before they play.
  */
-import { Application, Container, Graphics, Sprite, TilingSprite, type FederatedPointerEvent, type Texture } from "pixi.js";
+import { Application, Container, Graphics, MeshPlane, Sprite, TilingSprite, type PlaneGeometry, type FederatedPointerEvent, type Texture } from "pixi.js";
 import type { RaidResult } from "../../core/engine";
 import { kij } from "../../core/rules";
 import type { IslandState } from "../../core/state";
@@ -34,6 +34,8 @@ interface Walker {
   mode: "toWork" | "work" | "idle" | "toHome" | "fadeOut" | "gone" | "fadeIn";
   view: PersonView;
 }
+/** A placed model: a plain sprite, or (High only) a mesh plane that sways its thatch and rags. */
+type Piece = Sprite | MeshPlane;
 interface Tween {
   t: number;
   dur: number;
@@ -41,6 +43,7 @@ interface Tween {
   done?: () => void;
 }
 
+const SWAY_FRAME = /^(grey\/)?b\/colony\/(cottage|tower)\/|^tent$/;
 const isWatch = (job: Job) => job === "watch" || job === "nell";
 
 /** Play-area insets (CSS px); updated from the DOM HUD and rail each frame. */
@@ -94,7 +97,8 @@ export class IslandView {
   private thumbs = new Map<string, string>();
   private era = "";
   private layout!: IslandLayout;
-  private sprites = new Map<string, Sprite>();
+  private sprites = new Map<string, Piece>();
+  private meshes: { mesh: MeshPlane; ph: number }[] = [];
   private walkers: Walker[] = [];
   private tweens: Tween[] = [];
   private boats: Sprite[] = [];
@@ -106,7 +110,7 @@ export class IslandView {
   private tufts: Tuft[] = [];
   private gulls: { sp: Sprite; spec: GullSpec }[] = [];
   private clouds: { sp: Sprite; x: number; y: number; v: number }[] = [];
-  private swayers: { sp: Sprite; frames: Texture[]; ph: number }[] = [];
+  private swayers: { sp: Piece; frames: Texture[]; ph: number }[] = [];
   private flagTex: Texture[] = [];
   private smokeTex: Texture[] = [];
   private gullTex: Texture[] = [];
@@ -213,6 +217,7 @@ export class IslandView {
     this.boatBase.clear();
     for (const s of this.sprites.values()) s.destroy();
     this.sprites.clear();
+    this.meshes = [];
     this.ground.removeChildren().forEach((c) => c.destroy());
     this.shore.removeChildren().forEach((c) => c.destroy());
     this.clearSea();
@@ -254,7 +259,7 @@ export class IslandView {
       keep.add(id);
       let sp = this.sprites.get(id);
       if (!sp) {
-        sp = new Sprite(this.tex.get(p.frame));
+        sp = this.amb.mesh && SWAY_FRAME.test(p.frame) ? this.makeMesh(p) : new Sprite(this.tex.get(p.frame));
         this.objects.addChild(sp);
         this.sprites.set(id, sp);
       } else sp.texture = this.tex.get(p.frame);
@@ -269,9 +274,20 @@ export class IslandView {
         sp.destroy();
         this.sprites.delete(id);
       }
+    this.meshes = this.meshes.filter((m) => !m.mesh.destroyed);
     this.syncWalkers(st);
     this.syncFx();
     if (prevR !== this.layout.r) this.fit(true);
+  }
+
+  /** High: a 2x6 plane over the model; the rows near the roof shift by whole art pixels (see stepWorldFx). */
+  private makeMesh(p: Placed): MeshPlane {
+    const t = this.tex.get(p.frame);
+    const m = new MeshPlane({ texture: t, verticesX: 2, verticesY: 6 });
+    m.pivot.set(t.width * t.defaultAnchor!.x, t.height * t.defaultAnchor!.y);
+    m.eventMode = "none";
+    this.meshes.push({ mesh: m, ph: Math.abs(p.x * 0.011 + p.y * 0.007) });
+    return m;
   }
 
   private addAll(into: Container, list: Placed[]): void {
@@ -822,6 +838,26 @@ export class IslandView {
       this.applyCamera();
     }
   }
+  /** Rows near the roof lean one art pixel and back; the base stays put. Writes the vertex buffer in place. */
+  private swayMeshes(): void {
+    const u = this.art.u;
+    for (let i = 0; i < this.meshes.length; i++) {
+      const { mesh, ph } = this.meshes[i];
+      if (mesh.destroyed) continue;
+      const geo = mesh.geometry as PlaneGeometry;
+      const pos = geo.positions;
+      const rows = 6, w = geo.width, h = geo.height;
+      for (let r = 0; r < rows; r++) {
+        const k = 1 - r / (rows - 1);
+        const dx = Math.round((Math.sin(this.clock * 1.7 + ph + r * 0.5) * 1.4 * k * k) ) * u;
+        pos[(r * 2) * 2] = dx;
+        pos[(r * 2) * 2 + 1] = (r * h) / (rows - 1);
+        pos[(r * 2 + 1) * 2] = w + dx;
+        pos[(r * 2 + 1) * 2 + 1] = (r * h) / (rows - 1);
+      }
+      geo.getBuffer("aPosition").update();
+    }
+  }
   private fxTick = -1;
   private gullOut: GullPoseT = { x: 0, y: 0, vx: 0, vy: 0, flipX: false, frame: 0 };
   private stepWorldFx(dt: number): void {
@@ -886,6 +922,7 @@ export class IslandView {
       c.sp.position.set(this.snap(c.x + WAVE_DIR.x * 20 * c.age), this.snap(c.y + WAVE_DIR.y * 20 * c.age));
       c.sp.alpha = crestAlpha(c.age / c.life, this.raidOn);
     }
+    if (amb.mesh) this.swayMeshes();
     for (let i = 0; i < this.gulls.length; i++) {
       const g = this.gulls[i];
       const p = gullPose(g.spec, this.clock, b.x, b.w, this.gullOut);
@@ -942,8 +979,8 @@ export class IslandView {
     for (let k = 0; k < Math.min(4, Math.max(2, this.walkers.length)); k++) {
       defenders.push(this.fx("p/watch/0", g.x - 70 + k * 14, g.y + 10, 80));
     }
-    const ring: Sprite[] = [];
-    const towers: Sprite[] = [];
+    const ring: Piece[] = [];
+    const towers: Piece[] = [];
     for (const [id, sp] of this.sprites) {
       if (id.includes("ring/") || id.includes("gate/")) ring.push(sp);
       if (id.includes("tower") || id.includes("watch")) towers.push(sp);
