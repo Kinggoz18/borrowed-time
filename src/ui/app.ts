@@ -19,7 +19,7 @@ import type { Cue, Haptics, Sfx } from "../platform/sfx";
 import { applyOrientation } from "../platform/orientation";
 import { BAND_WORD, BLURB, HIDDEN_TITLE, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
 import { h, icon, type Child } from "./dom";
-import { runIntro } from "./intro";
+import { INTRO_CAMERA, runIntro } from "./intro";
 
 export interface UiDeps {
   view: IslandView;
@@ -380,8 +380,8 @@ export class GameUI {
         (line) => {
           const lay = this.d.view.playLayout;
           if (line === 0) this.d.view.showLot("0,0");
-          else if (line === 4 && lay) this.d.view.focusWorld(lay.tent.x, lay.tent.y - 20);
-          else if (line === 5) this.d.view.fit(false);
+          else if (line === INTRO_CAMERA.tent && lay) this.d.view.focusWorld(lay.tent.x, lay.tent.y - 20);
+          else if (line === INTRO_CAMERA.fit) this.d.view.fit(false);
         },
       );
     });

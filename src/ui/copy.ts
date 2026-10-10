@@ -30,7 +30,7 @@ export const BAND_WORD = { light: "Light", even: "Even", heavy: "Heavy" } as con
 
 export const LINES = {
   introTitle: "We're starving.",
-  introBody: "The first six of us came ashore with 8 Hours. Hesper's tent was already here.",
+  introBody: "Eight Hours will not feed six for long. Hesper is watching from her tent.",
   introAsk: "Borrow 10 Hours?",
   firstBorrow: "“Tomorrow's light, lent today. Do bring it back.” — Hesper",
   firstGrey: "“The shore is mine for a while. I'll keep it warm.” — Hesper",

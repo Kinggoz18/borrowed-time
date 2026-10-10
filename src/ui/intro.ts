@@ -10,15 +10,22 @@ export interface IntroLine {
   text: string;
 }
 
-/** Line 2: six ashore on the first trip; forty-one comes later (LORE). */
+/**
+ * Six lines, one scene (docs/INTRO_DIALOGUE.md). Every line is spoken to someone and answers the
+ * one before it: Nell wakes Noon on the beach, Noon asks, Hesper answers, Tobias warns about the
+ * debt, Ada warns about the dusk raiders, Noon sets the first goal.
+ */
 export const INTRO_LINES: IntroLine[] = [
-  { speaker: "Noon", side: "left", portrait: "/portraits/noon.webp", text: "Every island has a clock. This one is a stone needle, and I am the part of it that moves." },
-  { speaker: "Nell", side: "right", portrait: "/portraits/nell.webp", text: "Six of us and a goat, ashore at last. Eight Hours to our name." },
-  { speaker: "Ada", side: "left", portrait: "/portraits/ada.webp", text: "The dial keeps time like a cistern keeps rain. Live well here and it gives us back more room." },
-  { speaker: "Tobias", side: "right", portrait: "/portraits/tobias.webp", text: "Nothing is free. Somebody always sends a bill." },
-  { speaker: "Hesper", side: "left", portrait: "/portraits/hesper.webp", text: "Welcome, all of you. Borrow an hour whenever the evening runs short. I am only ever polite about the rest." },
-  { speaker: "Noon", side: "left", portrait: "/portraits/noon.webp", text: "Keep them fed. Keep them housed. And be home before dusk." },
+  { speaker: "Nell", side: "right", portrait: "/portraits/nell.webp", text: "Noon! Wake up. The Patience broke on the reef. Six of us got ashore, and you." },
+  { speaker: "Noon", side: "left", portrait: "/portraits/noon.webp", text: "Nell... where are we? Whose tent is that?" },
+  { speaker: "Hesper", side: "right", portrait: "/portraits/hesper.webp", text: "Mine. Welcome ashore, Noon. I am Hesper, the Clockkeeper. You have eight Hours between you, and I lend more." },
+  { speaker: "Tobias", side: "right", portrait: "/portraits/tobias.webp", text: "Careful, Noon. Every hour she lends comes due at dusk, with a little extra. We ran from Aster to get away from that." },
+  { speaker: "Ada", side: "right", portrait: "/portraits/ada.webp", text: "And dusk brings the Late, rowing in from islands that ran out of time. They want Hours, not blood. Walls turn them back." },
+  { speaker: "Noon", side: "left", portrait: "/portraits/noon.webp", text: "Then we build before dark. The Palisade first." },
 ];
+
+/** The tent comes into view for Hesper's line, the whole island for the closing line. */
+export const INTRO_CAMERA = { tent: 2, fit: 5 } as const;
 
 export function runIntro(host: HTMLElement, onDone: () => void, onCamera?: (line: number) => void): () => void {
   let line = 0;
