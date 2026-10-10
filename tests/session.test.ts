@@ -2,18 +2,28 @@ import { describe, expect, it } from "vitest";
 import { verify } from "../src/core/game";
 import { SAVE_KEY } from "../src/core/save";
 import { hashState } from "../src/core/snapshot";
-import { HOUR_MS, Session } from "../src/game/session";
+import { BASE_DAY } from "../src/core/rules";
+import { BASE_HOUR_MS, FAST, GAME_SPEED, HOUR_MS, Session } from "../src/game/session";
 import { MemoryKV, type KV } from "../src/platform/storage";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe("session", () => {
-  it("the clock ticks whole hours by real time, 8x when resting, and stops at dusk", () => {
+  it("runs at 0.7x the old clock, with a day of BASE_DAY hours and a Rest that follows it", () => {
+    expect(GAME_SPEED).toBe(0.7);
+    expect(HOUR_MS).toBe(Math.round(BASE_HOUR_MS / 0.7));
+    expect(HOUR_MS).toBeGreaterThan(BASE_HOUR_MS);
+    expect(BASE_DAY).toBe(12);
+    expect(FAST).toBe(BASE_DAY);
+    const s = Session.fresh(4, new MemoryKV(), "Test");
+    expect(s.state.dayLen).toBe(BASE_DAY);
+  });
+  it("the clock ticks whole hours by real time, fast when resting, and stops at dusk", () => {
     const s = Session.fresh(4, new MemoryKV(), "Test");
     s.update(HOUR_MS * 2.5);
     expect(s.state.hour).toBe(2);
-    s.speed = 8;
-    s.update(HOUR_MS);
+    s.speed = FAST;
+    s.update(HOUR_MS / FAST * 8);
     expect(s.state.hour).toBe(10);
     s.update(HOUR_MS * 100);
     expect(s.state.phase).toBe("dusk");

@@ -128,7 +128,7 @@ Ada keeps a book. One line per thing that mattered: *"Season 4, Day 6: held the 
 
 ## Puns (used sparingly, about one per screen)
 
-"Living on borrowed time" (first loan) · "Buy some time" (the Clockkeeper button) · "Time flies (8x)" (fast-forward) · "Overtime" (borrowing the dusk) · "In the nick of time" (a narrow win, and the flagship) · "A stitch in time" (the Hospital) · "Time is money" (the Trade Post) · "Time waits for no one" and "killing time" (raid intros) · "They're making good time" (a heavy-skiff hint) · "A matter of time" (the Great Dial) · "Time, not timber" (half-price rebuilds). Keep them off the warning lines; clarity wins.
+"Living on borrowed time" (first loan) · "Buy some time" (the Clockkeeper button) · "Time flies (12x)" (fast-forward) · "Overtime" (borrowing the dusk) · "In the nick of time" (a narrow win, and the flagship) · "A stitch in time" (the Hospital) · "Time is money" (the Trade Post) · "Time waits for no one" and "killing time" (raid intros) · "They're making good time" (a heavy-skiff hint) · "A matter of time" (the Great Dial) · "Time, not timber" (half-price rebuilds). Keep them off the warning lines; clarity wins.
 
 ## Open questions (do not answer yet)
 

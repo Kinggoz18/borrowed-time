@@ -233,7 +233,7 @@ Run it yourself: `node sim-test.js` (`RUNS`/`SEAS` env to change the sample).
 
 ## v1 VERDICT fixes, now in
 
-- Borrowing changes the length of the day. You see the HUD day length go from 13h to 16h, then 8h tomorrow.
+- Borrowing changes the length of the day. You see the HUD day length go from 12h to 15h, then 9h tomorrow (the base day is `BASE_DAY` in `src/core/rules.ts`, 12 hours; one hour is 3.6 s of play at 1×).
 - Grey land is the sea-facing land. Raiders land there and hit it first; the headless run shows a grey cottage damaged before any non-grey building.
 - A decision at every raid dusk (the three options above).
 - Credit-only buildings: Lantern Hall and Sun Mirror.

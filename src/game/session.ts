@@ -3,14 +3,20 @@
  * listens for events and the renderer reads `state`. Every change goes through dispatch(), so the
  * command log always reproduces the island.
  */
+import { BASE_DAY } from "../core/rules";
 import { CommandError, dispatch, newData, type Command, type GameData, type GameEvent } from "../core/game";
 import { decodeSave, encodeSave, SAVE_KEY, type SaveMeta } from "../core/save";
 import type { IslandState } from "../core/state";
 import type { KV } from "../platform/storage";
 
-/** Real milliseconds per in-game hour at 1× (FINAL_PLAN_BT.md §2: a day is about half a minute). */
-export const HOUR_MS = 2500;
-export const FAST = 8;
+/** Real time per in-game hour before the owner's slow-down (a day was about half a minute). */
+export const BASE_HOUR_MS = 2500;
+/** The game runs at 0.7x of that (DECISIONS #24): one setting, change it here only. */
+export const GAME_SPEED = 0.7;
+/** Real milliseconds per in-game hour at 1x: 2500 / 0.7 = 3571 ms, so a 12-hour day lasts about 43 s. */
+export const HOUR_MS = Math.round(BASE_HOUR_MS / GAME_SPEED);
+/** "Rest" speed-up: one in-game day per `BASE_DAY` x, so it follows the day length (12x for a 12-hour day; about 0.3 s an hour either way). */
+export const FAST = BASE_DAY;
 
 export type Listener = (evs: GameEvent[], cmd: Command) => void;
 

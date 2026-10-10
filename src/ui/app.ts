@@ -117,7 +117,7 @@ export class GameUI {
       { class: "bar" },
       h("button", { class: "btn tab", "data-act": "build", onclick: () => this.openBuild() }, icon("build"), h("span", {}, "Build")),
       h("button", { class: "btn tab", "data-act": "keeper", onclick: () => this.openClockkeeper() }, icon("tent"), h("span", {}, "Hesper")),
-      h("button", { class: "btn tab", "data-act": "rest", "aria-pressed": "false", onclick: (e) => this.toggleRest(e.currentTarget as HTMLElement) }, icon("fast"), h("span", {}, "Rest 8×")),
+      h("button", { class: "btn tab", "data-act": "rest", "aria-pressed": "false", onclick: (e) => this.toggleRest(e.currentTarget as HTMLElement) }, icon("fast"), h("span", {}, `Rest ${FAST}×`)),
     );
     const pauseBtn = h("button", { class: "btn icon-btn pause-btn", "aria-label": "Pause", "data-act": "pause", onclick: () => this.openPause() }, icon("pause"));
     const kids: Child[] = [this.hud, pauseBtn, this.toasts, bar, this.layer];

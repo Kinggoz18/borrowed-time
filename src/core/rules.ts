@@ -3,6 +3,7 @@
  * FINAL_PLAN_BT.md §3 (tier levels 1/3/7/11, City raid scale ×1.12). Pure data, no side effects.
  */
 export const SEASON_DAYS = 6;
+/** Hours of daylight in a base day. The single source: income, UI copy, Rest speed and docs derive from it (DECISIONS #24). */
 export const BASE_DAY = 12;
 export const MAX_LEVEL = 20;
 export const MIN_DAY = 7;
