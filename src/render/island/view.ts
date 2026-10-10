@@ -12,9 +12,10 @@ import { loadPixelArt, type PixelArt } from "../../art/pixel/pixelArt";
 import { personFrameName, type Job, type PersonAnim, type PersonView } from "../../art/island/people";
 import type { TierConfig } from "../config";
 import { AMBIENT, crestAlpha, gullPose, gullSpecs, rng, seaState, seaStepsPerSecond, WAVE_DIR, type Ambient, type GullPose as GullPoseT, type GullSpec } from "./ambient";
-import { BATTLE_RESOLVED_EVENT, battleTimeline, boatCount, prefersReducedMotion, raiderCount } from "./battle";
+import { BATTLE_RESOLVED_EVENT, battleTimeline, type BattlePhase, boatCount, prefersReducedMotion, raiderCount } from "./battle";
 import { coastFor } from "./coast";
 import { defaultZoom, MIN_LOT_PX } from "./framing";
+import { arrowCount, monsterFrame, monsterHeight, monsterPose, monsterSize, type MonsterPose } from "./monster";
 import { cellAt, cellFront, depth, eraOf, layoutIsland, lotCornerKeys, radius, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
 import { pickAt } from "./pick";
 import { toTextures, type IslandTextures } from "./textures";
@@ -75,6 +76,9 @@ interface Puff {
   y: number;
   on: boolean;
 }
+
+/** How far below the island's back corner the shadow's waterline sits (world units): it looms behind the land, which hides its hem. */
+const SHADOW_BASE = 44;
 
 export class IslandView {
   readonly world = new Container();
@@ -998,110 +1002,221 @@ export class IslandView {
       if (id.includes("ring/") || id.includes("gate/")) ring.push(sp);
       if (id.includes("tower") || id.includes("watch")) towers.push(sp);
     }
+    const shadow = res.boss && this.art.has("fx/monster/0/0") ? this.spawnMonster(res.S) : null;
+    const restoreCam = shadow ? this.frameShadow(shadow.height) : null;
+    const arrows: Sprite[] = [];
     const towerY = towers.map((s) => s.y);
     const ringX = ring.map((s) => s.x);
-    const wait = (dur: number, step: (u: number) => void) =>
-      dur <= 0 ? Promise.resolve(step(1)) : new Promise<void>((done) => this.tween(dur, step, done));
+    let curPhase: BattlePhase = "approach";
+    const wait = (dur: number, step: (u: number) => void) => {
+      const run = (u: number): void => {
+        step(u);
+        if (!shadow) return;
+        shadow.pose(monsterPose(curPhase, u, res.won));
+        if (curPhase === "defend" || curPhase === "clash") shadow.volley(arrows, towers, defenders, u, arrowCount(res.S, res.D, 8));
+      };
+      return dur <= 0 ? Promise.resolve(run(1)) : new Promise<void>((done) => this.tween(dur, run, done));
+    };
 
-    for (const beat of battleTimeline(res, reduced)) {
-      if (beat.phase === "approach") {
-        await wait(beat.dur, (u) => {
-          const e = ease(u);
-          boats.forEach((b, k) => b.position.set(g.x + 280 - 190 * e + k * 32, g.y + 130 - 80 * e + k * 36 + Math.sin(u * 8 + k) * 2));
-        });
-      } else if (beat.phase === "defend") {
-        await wait(beat.dur, (u) => {
-          ring.forEach((s) => (s.alpha = 0.75 + 0.25 * Math.sin(u * Math.PI * 4)));
-          towers.forEach((s, k) => (s.y = towerY[k]! + Math.sin(u * Math.PI * 2 + k) * 2));
-          defenders.forEach((d, k) => {
-            d.x = g.x - 70 + k * 14 + 24 * u;
-            d.y = g.y + 10 - 18 * u;
-            d.texture = this.personTex("watch", "walk", "se", Math.floor(u * 6) % 4);
-            d.scale.x = 1;
-          });
-        });
-        ring.forEach((s) => (s.alpha = 1));
-        towers.forEach((s, k) => (s.y = towerY[k]!));
-      } else if (beat.phase === "clash") {
-        const sparks: Sprite[] = [];
-        await wait(beat.dur, (u) => {
-          raiders.forEach((r, k) => {
-            r.position.set(g.x + 90 - 70 * u + (k % 4) * 10, g.y + 48 - 32 * u + Math.floor(k / 4) * 8);
-            r.texture = this.personTex("raider", "walk", "nw", Math.floor(u * 10) % 4);
-            r.scale.x = 1;
-          });
-          if (sparks.length < 3 && u > 0.2) {
-            const t = towers[sparks.length] ?? defenders[sparks.length];
-            const target = raiders[sparks.length % raiders.length];
-            if (t && target) sparks.push(this.fx("fx/spark", t.x, t.y - 20));
-          }
-          sparks.forEach((s, k) => {
-            const target = raiders[k % Math.max(1, raiders.length)];
-            if (!target) return;
-            s.x += (target.x - s.x) * 0.2;
-            s.y += (target.y - 12 - s.y) * 0.2;
-            s.alpha = 0.4 + 0.6 * Math.sin(u * 30 + k);
-          });
-        });
-        sparks.forEach((s) => s.destroy());
-      } else if (beat.phase === "outcome") {
-        if (res.won) {
-          const sparks = raiders.slice(0, 3).map((r) => this.fx("fx/spark", r.x, r.y - 14));
+    try {
+      for (const beat of battleTimeline(res, reduced)) {
+        curPhase = beat.phase;
+        if (beat.phase === "approach") {
           await wait(beat.dur, (u) => {
-            raiders.forEach((r) => {
-              r.x += 1.2;
-              r.alpha = 1 - u;
-              r.scale.x = 1;
-            });
-            sparks.forEach((s) => (s.alpha = 1 - u));
+            const e = ease(u);
+            boats.forEach((b, k) => b.position.set(g.x + 280 - 190 * e + k * 32, g.y + 130 - 80 * e + k * 36 + Math.sin(u * 8 + k) * 2));
           });
-          sparks.forEach((s) => s.destroy());
-        } else {
+        } else if (beat.phase === "defend") {
+          await wait(beat.dur, (u) => {
+            ring.forEach((s) => (s.alpha = 0.75 + 0.25 * Math.sin(u * Math.PI * 4)));
+            towers.forEach((s, k) => (s.y = towerY[k]! + Math.sin(u * Math.PI * 2 + k) * 2));
+            defenders.forEach((d, k) => {
+              d.x = g.x - 70 + k * 14 + 24 * u;
+              d.y = g.y + 10 - 18 * u;
+              d.texture = this.personTex("watch", "walk", "se", Math.floor(u * 6) % 4);
+              d.scale.x = 1;
+            });
+          });
+          ring.forEach((s) => (s.alpha = 1));
+          towers.forEach((s, k) => (s.y = towerY[k]!));
+        } else if (beat.phase === "clash") {
+          const sparks: Sprite[] = [];
           await wait(beat.dur, (u) => {
             raiders.forEach((r, k) => {
-              r.x -= 0.4;
-              r.y -= 0.2;
-              r.texture = this.personTex("raider", "walk", "nw", Math.floor(u * 8 + k) % 4);
+              r.position.set(g.x + 90 - 70 * u + (k % 4) * 10, g.y + 48 - 32 * u + Math.floor(k / 4) * 8);
+              r.texture = this.personTex("raider", "walk", "nw", Math.floor(u * 10) % 4);
+              r.scale.x = 1;
             });
-            ring.forEach((s, k) => (s.x = ringX[k]! + Math.sin(u * 40) * 2));
-            defenders.forEach((d) => (d.alpha = 1 - u * 0.5));
+            if (sparks.length < 3 && u > 0.2) {
+              const t = towers[sparks.length] ?? defenders[sparks.length];
+              const target = raiders[sparks.length % raiders.length];
+              if (t && target) sparks.push(this.fx("fx/spark", t.x, t.y - 20));
+            }
+            sparks.forEach((s, k) => {
+              const target = raiders[k % Math.max(1, raiders.length)];
+              if (!target) return;
+              s.x += (target.x - s.x) * 0.2;
+              s.y += (target.y - 12 - s.y) * 0.2;
+              s.alpha = 0.4 + 0.6 * Math.sin(u * 30 + k);
+            });
           });
-          ring.forEach((s, k) => (s.x = ringX[k]!));
-        }
-      } else if (beat.phase === "resolved") {
-        this.emitBattleResolved(res);
-      } else if (beat.phase === "aftermath") {
-        if (!res.won) {
-          const fires: Sprite[] = [];
-          for (const dmg of res.damaged.slice(0, 6)) {
-            if (dmg.k === "pal") continue;
-            const [i, j] = kij(dmg.k);
-            const p = cellFront(i, j);
-            fires.push(this.fx("fx/fire", p.x, p.y - 24), this.fx("fx/smoke", p.x + 4, p.y - 44));
+          sparks.forEach((s) => s.destroy());
+        } else if (beat.phase === "outcome") {
+          if (res.won) {
+            const sparks = raiders.slice(0, 3).map((r) => this.fx("fx/spark", r.x, r.y - 14));
+            await wait(beat.dur, (u) => {
+              raiders.forEach((r) => {
+                r.x += 1.2;
+                r.alpha = 1 - u;
+                r.scale.x = 1;
+              });
+              sparks.forEach((s) => (s.alpha = 1 - u));
+            });
+            sparks.forEach((s) => s.destroy());
+          } else {
+            await wait(beat.dur, (u) => {
+              raiders.forEach((r, k) => {
+                r.x -= 0.4;
+                r.y -= 0.2;
+                r.texture = this.personTex("raider", "walk", "nw", Math.floor(u * 8 + k) % 4);
+              });
+              ring.forEach((s, k) => (s.x = ringX[k]! + Math.sin(u * 40) * 2));
+              defenders.forEach((d) => (d.alpha = 1 - u * 0.5));
+            });
+            ring.forEach((s, k) => (s.x = ringX[k]!));
           }
-          await wait(beat.dur, (u) => {
-            fires.forEach((f, k) => ((f.scale.y = 1 + 0.15 * Math.sin(u * 30 + k)), (f.alpha = u > 0.8 ? (1 - u) * 5 : 1)));
-            raiders.forEach((r) => (r.alpha = (ghost ? 0.5 : 1) * (1 - u)));
+        } else if (beat.phase === "resolved") {
+          this.emitBattleResolved(res);
+        } else if (beat.phase === "aftermath") {
+          if (!res.won) {
+            const fires: Sprite[] = [];
+            for (const dmg of res.damaged.slice(0, 6)) {
+              if (dmg.k === "pal") continue;
+              const [i, j] = kij(dmg.k);
+              const p = cellFront(i, j);
+              fires.push(this.fx("fx/fire", p.x, p.y - 24), this.fx("fx/smoke", p.x + 4, p.y - 44));
+            }
+            await wait(beat.dur, (u) => {
+              fires.forEach((f, k) => ((f.scale.y = 1 + 0.15 * Math.sin(u * 30 + k)), (f.alpha = u > 0.8 ? (1 - u) * 5 : 1)));
+              raiders.forEach((r) => (r.alpha = (ghost ? 0.5 : 1) * (1 - u)));
+            });
+            fires.forEach((f) => f.destroy());
+          } else await wait(Math.min(beat.dur, 0.4), () => undefined);
+          raiders.forEach((r) => r.destroy());
+          defenders.forEach((d) => d.destroy());
+          await wait(reduced ? 0.05 : 1.0, (u) => boats.forEach((b, k) => (k > 0 || !res.won ? (b.alpha = (ghost ? 0.45 : 1) * (1 - u)) : (b.texture = this.tex.get("boat/beached")))));
+          boats.forEach((b, k) => {
+            if (k > 0 || !res.won) b.destroy();
+            else {
+              this.boatBase.set(b, b.y);
+              this.boats.push(b);
+            }
           });
-          fires.forEach((f) => f.destroy());
-        } else await wait(Math.min(beat.dur, 0.4), () => undefined);
-        raiders.forEach((r) => r.destroy());
-        defenders.forEach((d) => d.destroy());
-        await wait(reduced ? 0.05 : 1.0, (u) => boats.forEach((b, k) => (k > 0 || !res.won ? (b.alpha = (ghost ? 0.45 : 1) * (1 - u)) : (b.texture = this.tex.get("boat/beached")))));
-        boats.forEach((b, k) => {
-          if (k > 0 || !res.won) b.destroy();
-          else {
-            this.boatBase.set(b, b.y);
-            this.boats.push(b);
+          while (this.boats.length > 3) {
+            const gone = this.boats.shift()!;
+            this.boatBase.delete(gone);
+            gone.destroy();
           }
-        });
-        while (this.boats.length > 3) {
-          const gone = this.boats.shift()!;
-          this.boatBase.delete(gone);
-          gone.destroy();
         }
       }
+    } finally {
+      shadow?.destroy();
+      arrows.forEach((a) => a.destroy());
+      restoreCam?.();
     }
+  }
+
+
+  /** The Long Dusk (day 6): a hooded shadow behind the island, sized by the raid's strength. */
+  private spawnMonster(S: number): {
+    height: number;
+    pose: (p: MonsterPose) => void;
+    volley: (arrows: Sprite[], towers: Piece[], defenders: Sprite[], u: number, count: number) => void;
+    destroy: () => void;
+  } {
+    const size = monsterSize(S);
+    const b = this.layout.bounds;
+    const u = this.art.u;
+    const baseX = b.x + b.w / 2;
+    // the waterline sits just inside the back corner of the island, so the lower hem melts into the shallows
+    const baseY = b.y + SHADOW_BASE;
+    const height = monsterHeight(size, u);
+    const sp = new Sprite(this.art.get(`fx/monster/${size}/0`));
+    const mask = new Graphics();
+    sp.mask = mask;
+    this.sea.addChild(mask, sp);
+    let lean = 0;
+    const place = (p: MonsterPose): void => {
+      sp.visible = p.rise > 0.01;
+      sp.alpha = p.alpha;
+      sp.texture = this.art.get(`fx/monster/${size}/${monsterFrame(this.clock)}`);
+      lean = p.lean * u;
+      sp.position.set(this.snap(baseX + lean), this.snap(baseY + (1 - p.rise) * height * 0.95));
+      // everything below the waterline is hidden: it is rising out of the sea, not sliding over the island
+      mask.clear().rect(baseX - height * 2, baseY - height * 2, height * 4, height * 2 + 4).fill(0xffffff);
+    };
+    place({ rise: 0, alpha: 1, lean: 0 });
+    return {
+      height,
+      pose: place,
+      volley: (arrows, towers, defenders, k, count) => {
+        const from = [...towers.map((t) => ({ x: t.x, y: t.y - 36 })), ...defenders.map((d) => ({ x: d.x, y: d.y - 14 }))];
+        if (!from.length) return;
+        const target = { x: baseX + lean, y: baseY - height * 0.45 };
+        const want = Math.floor(k * count);
+        while (arrows.length < want) {
+          const a = new Sprite(this.art.get("fx/arrow"));
+          a.zIndex = 100000;
+          a.alpha = 0;
+          this.objects.addChild(a);
+          (a as Sprite & { _from?: { x: number; y: number }; _t0?: number })._from = from[arrows.length % from.length];
+          (a as Sprite & { _t0?: number })._t0 = k;
+          arrows.push(a);
+        }
+        arrows.forEach((a, n) => {
+          const m = a as Sprite & { _from: { x: number; y: number }; _t0: number };
+          const t = Math.max(0, Math.min(1, (k - m._t0) / 0.35));
+          const lift = Math.sin(t * Math.PI) * 26;
+          a.alpha = t > 0 && t < 1 ? 1 : 0;
+          a.scale.x = target.x < m._from.x ? -1 : 1;
+          a.position.set(this.snap(m._from.x + (target.x - m._from.x) * t), this.snap(m._from.y + (target.y - m._from.y) * t - lift + n * 0));
+        });
+      },
+      destroy: () => {
+        sp.mask = null;
+        mask.destroy();
+        sp.destroy();
+      },
+    };
+  }
+
+  /** Show the whole shadow: zoom and centre so the island, the sea behind it and the monster's head all fit. Returns the undo. */
+  private frameShadow(height: number): () => void {
+    const saved = { cx: this.cx, cy: this.cy, raw: this.rawZoom, user: this.userCam, fit: this.fitZoom };
+    const land = this.layout.bounds;
+    const top = land.y + SHADOW_BASE - height - 12;
+    // the shadow is the show: frame it and the back of the island; the near shore may fall off the bottom of the screen
+    const box = { x: land.x + land.w * 0.05, y: top, w: land.w * 0.9, h: land.y + SHADOW_BASE + land.h * 0.78 - top };
+    const a = this.area();
+    const z = Math.min(a.w / box.w, a.h / box.h);
+    const per = this.app.renderer.resolution * this.art.u;
+    this.userCam = true;
+    this.glide = null;
+    const want = z * per >= 1 ? Math.floor(z * per) / per : z;
+    this.fitZoom = Math.min(this.fitZoom, want);
+    this.rawZoom = want;
+    this.cx = box.x + box.w / 2;
+    this.cy = box.y + box.h / 2;
+    this.apply();
+    return () => {
+      this.fitZoom = saved.fit;
+      this.userCam = saved.user;
+      this.rawZoom = saved.raw;
+      this.cx = saved.cx;
+      this.cy = saved.cy;
+      this.apply();
+      if (!saved.user) this.fit(false);
+    };
   }
 
   private emitBattleResolved(res: RaidResult): void {

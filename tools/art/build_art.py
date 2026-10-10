@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pixlib import *
 import terrain as T
 import models as M
+import monster as MON
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -91,6 +92,11 @@ for gi in range(4):
         add("shared", f"fx/grass/{gi}/{si}", out, out.shape[1] // 2, out.shape[0] - 1)
 for i, cs in enumerate(T.cloud_shadows()):
     add("shared", f"fx/cloud/{i}", cs, 0, 0)
+
+# the Long Dusk: a hooded shadow (3 sizes x 4 frames) and the defenders' arrows
+for nm, (a, anc) in MON.frames().items():
+    add("shared", nm, a, anc[0], anc[1])
+a, anc = MON.arrow(); add("shared", "fx/arrow", a, anc[0], anc[1])
 
 # pixel fx (procedural)
 def px_fx():

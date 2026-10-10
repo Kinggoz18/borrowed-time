@@ -1,6 +1,6 @@
 /** Boots the game: storage, settings, quality tier, the Pixi island, the session and the UI. */
 import { Application } from "pixi.js";
-import { newGame } from "../core/engine";
+import { newGame, type RaidResult } from "../core/engine";
 import { SAVE_KEY } from "../core/save";
 import { cloneState } from "../core/snapshot";
 import type { IslandState } from "../core/state";
@@ -26,6 +26,8 @@ export interface GameHooks {
   lotToScreen: (key: string) => { x: number; y: number };
   zoomToLots: () => void;
   showLot: (key: string) => void;
+  /** Plays a dusk battle from an already-rolled result (tests and screenshots). */
+  playRaid: (res: RaidResult) => Promise<void>;
   fps: () => number;
   error?: string;
 }
@@ -125,6 +127,7 @@ export async function bootGame(): Promise<void> {
     lotToScreen: (k) => view.lotToScreen(k),
     zoomToLots: () => view.zoomToLots(),
     showLot: (k) => view.showLot(k),
+    playRaid: (res) => view.playRaid(res),
     fps: () => Math.round(fps),
   };
   (window as unknown as { __bt: GameHooks }).__bt = hooks;
