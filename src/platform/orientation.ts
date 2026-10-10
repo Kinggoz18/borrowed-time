@@ -16,5 +16,5 @@ export async function applyOrientation(pref: OrientPref): Promise<void> {
 }
 
 export function orientFromSettings(s: Settings): OrientPref {
-  return s.orientation ?? "landscape";
+  return s.orientation ?? "auto";
 }

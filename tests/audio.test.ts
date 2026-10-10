@@ -107,7 +107,7 @@ describe("settings", () => {
     expect(split.musicVol).toBe(0.2);
   });
   it("keeps orientation from the UI stream and fills mixer volumes", async () => {
-    expect(DEFAULT_SETTINGS.orientation).toBe("landscape");
+    expect(DEFAULT_SETTINGS.orientation).toBe("auto");
     const kv = new MemoryKV();
     await kv.set(SETTINGS_KEY, JSON.stringify({ sound: true, haptics: true, quality: "auto", orientation: "portrait" }));
     const s = await loadSettings(kv);
@@ -115,5 +115,15 @@ describe("settings", () => {
     expect(s.music).toBe(true);
     expect(s.musicVol).toBe(DEFAULT_SETTINGS.musicVol);
     expect(s.sfxVol).toBe(DEFAULT_SETTINGS.sfxVol);
+  });
+  it("fresh installs get Auto layout, and an explicit Landscape choice survives", async () => {
+    const fresh = new MemoryKV();
+    expect((await loadSettings(fresh)).orientation).toBe("auto");
+    const kept = new MemoryKV();
+    await kept.set(SETTINGS_KEY, JSON.stringify({ orientation: "landscape" }));
+    expect((await loadSettings(kept)).orientation).toBe("landscape");
+    const odd = new MemoryKV();
+    await odd.set(SETTINGS_KEY, JSON.stringify({ orientation: "sideways" }));
+    expect((await loadSettings(odd)).orientation).toBe("auto");
   });
 });

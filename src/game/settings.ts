@@ -18,7 +18,7 @@ export const DEFAULT_SETTINGS: Settings = {
   music: true,
   haptics: true,
   quality: "auto",
-  orientation: "landscape",
+  orientation: "auto",
   musicVol: 0.65,
   sfxVol: 0.75,
 };
