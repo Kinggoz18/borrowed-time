@@ -51,6 +51,8 @@ let hudTop = 64;
 let railRight = 104;
 /** Gameplay camera starts this much closer than "whole island fits" (owner: too far out). */
 export const PLAY_ZOOM = 1.6;
+/** ...and never shows a lot narrower than this on screen (CSS px), so buildings stay readable as the ring grows. */
+export const MIN_LOT_PX = 136;
 
 /** A pooled foam crest rolling toward the island during the raid. */
 interface Crest {
@@ -420,9 +422,10 @@ export class IslandView {
     const a = this.area();
     this.fitZoom = Math.min(a.w / b.w, a.h / b.h);
     this.ringFit = Math.min(a.w / pb.w, a.h / pb.h);
-    if (reset || this.rawZoom < this.fitZoom) {
+    if (reset || !this.userCam || this.rawZoom < this.fitZoom) {
+      this.userCam = false;
       // Play starts zoomed in so buildings and people read; pinch out to see the whole island and its sea.
-      this.rawZoom = this.ringFit * PLAY_ZOOM;
+      this.rawZoom = this.snapDefault(Math.max(this.ringFit * PLAY_ZOOM, MIN_LOT_PX / TW));
       this.cx = pb.x + pb.w / 2;
       this.cy = pb.y + pb.h / 2;
     }
@@ -431,9 +434,14 @@ export class IslandView {
   /** The part of the screen the island owns: below the top HUD, left of the button rail. */
   /** Match the real HUD and action-rail rects from the DOM (safe-area aware). */
   setPlayInsets(top: number, right: number): void {
+    const moved = Math.abs(top - hudTop) > 0.5 || Math.abs(right - railRight) > 0.5;
     hudTop = top;
     railRight = right;
+    // the bar or rail changed size (first frame, rotation): an untouched camera re-frames to the new play area
+    if (moved && !this.userCam && this.layout) this.fit(false);
   }
+  /** True once the player has panned or zoomed; until then the default framing follows the screen. */
+  private userCam = false;
   private area(): { x: number; y: number; w: number; h: number } {
     const { width, height } = this.app.screen;
     return { x: 0, y: hudTop, w: Math.max(1, width - railRight), h: Math.max(1, height - hudTop) };
@@ -447,6 +455,7 @@ export class IslandView {
     if (p.x > a.x + m && p.x < a.x + a.w - m && p.y > a.y + m && p.y < a.y + a.h - m) return;
     const [i, j] = kij(key);
     const f = cellFront(i, j);
+    this.userCam = true;
     this.glide = { x: f.x, y: f.y - TH / 2 };
   }
   /** Glide so a lot sits in the middle of the island still visible left of a side sheet `cover` px wide. */
@@ -455,6 +464,7 @@ export class IslandView {
     const f = cellFront(i, j);
     const a = this.area();
     const want = (this.app.screen.width - cover) / 2;
+    this.userCam = true;
     this.glide = { x: f.x - (want - (a.x + a.w / 2)) / this.zoom, y: f.y - TH / 2 };
   }
   get playLayout(): IslandLayout | null {
@@ -468,6 +478,7 @@ export class IslandView {
   /** Centre the camera on a lot (used by tests and to frame the next thing to do). */
   showLot(key: string): void {
     this.glide = null;
+    this.userCam = true;
     const [i, j] = kij(key);
     const p = cellFront(i, j);
     this.cx = p.x;
@@ -476,7 +487,7 @@ export class IslandView {
   }
   private apply(): void {
     const b = this.layout.bounds;
-    this.rawZoom = Math.max(this.fitZoom, Math.min(Math.max(this.fitZoom, this.ringFit * 5), this.rawZoom));
+    this.rawZoom = Math.max(this.fitZoom, Math.min(Math.max(this.fitZoom, this.ringFit * 5, (2 * MIN_LOT_PX) / TW), this.rawZoom));
     this.zoom = this.snapZoom(this.rawZoom);
     // keep the island on screen
     this.cx = Math.max(b.x, Math.min(b.x + b.w, this.cx));
@@ -487,6 +498,14 @@ export class IslandView {
     // whole device pixels, so the art-pixel grid never straddles a screen pixel
     this.world.position.set(Math.round((a.x + a.w / 2 - this.cx * this.zoom) * res) / res, Math.round((a.y + a.h / 2 - this.cy * this.zoom) * res) / res);
     this.applyCamera();
+  }
+  /** The default view leans closer: round up to the next whole device pixel per art pixel unless it is just over one. */
+  private snapDefault(z: number): number {
+    const per = this.app.renderer.resolution * this.art.u;
+    const d = z * per;
+    if (d < 1) return z;
+    const f = d - Math.floor(d);
+    return (f >= 0.3 ? Math.ceil(d) : Math.max(1, Math.floor(d))) / per;
   }
   /** Whole device pixels per art pixel (pixel-exact, no shimmer); only the far overview may go below 1:1. */
   private snapZoom(z: number): number {
@@ -509,6 +528,7 @@ export class IslandView {
   }
   private glintShift = 0;
   zoomAt(sx: number, sy: number, k: number, fromDrawn = false): void {
+    this.userCam = true;
     const wx = (sx - this.world.x) / this.zoom, wy = (sy - this.world.y) / this.zoom;
     this.rawZoom = (fromDrawn ? this.zoom : this.rawZoom) * k;
     this.apply();
@@ -543,6 +563,7 @@ export class IslandView {
     const dx = e.global.x - d.x, dy = e.global.y - d.y;
     if (Math.hypot(dx, dy) > 8) d.moved = true;
     if (d.moved) {
+      this.userCam = true;
       this.cx = d.cx - dx / this.zoom;
       this.cy = d.cy - dy / this.zoom;
       this.apply();
@@ -582,6 +603,7 @@ export class IslandView {
     return { x: this.world.x + p.x * this.zoom, y: this.world.y + (p.y - TH / 2) * this.zoom };
   }
   zoomToLots(): void {
+    this.userCam = true;
     this.rawZoom = Math.max(this.zoom, 56 / TW);
     this.apply();
   }
