@@ -5,7 +5,7 @@
  */
 import { BASE_DAY } from "../core/rules";
 import { CommandError, dispatch, newData, type Command, type GameData, type GameEvent } from "../core/game";
-import { decodeSave, encodeSave, SAVE_KEY, type SaveMeta } from "../core/save";
+import { decodeSave, encodeSave, defaultMeta, SAVE_KEY, type SaveMeta } from "../core/save";
 import type { IslandState } from "../core/state";
 import type { KV } from "../platform/storage";
 
@@ -36,7 +36,7 @@ export class Session {
   ) {}
 
   static fresh(seed: number, kv: KV, colonyName: string, now?: () => number): Session {
-    return new Session(newData(seed), { introDone: false, storyDone: false, colonyName, savedAt: 0 }, kv, now);
+    return new Session(newData(seed), defaultMeta({ introDone: false, storyDone: false, colonyName, savedAt: 0 }), kv, now);
   }
   static async load(kv: KV, now?: () => number): Promise<Session | null> {
     const f = decodeSave(await kv.get(SAVE_KEY));
