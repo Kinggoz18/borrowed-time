@@ -14,10 +14,11 @@ Layout and art only. No rule, cost, cap or sim-gate input changed (the gates rep
 - Footprints (2x2, 3x3) stay inside one block (`claims` in `engine.ts` checks `blockOf`). That is the only engine line touched; the sim gates are identical.
 - Era surfaces: colony and unpaved village = dirt track; after Roads: village cobbles, town paved with kerb and brass hour ticks, city asphalt with flagstone pavement. Plazas (four corners round the gnomon, plus each landmark junction) are paved with an hour ring.
 
-## Landmarks (`landmarks.ts`, cosmetic, no effect)
-Appear on their own by tier, lazy-loaded with the era, never in the Build sheet. Tap shows a plaque (name and one line).
-- Town: The Town Clock (-6,-6), Hesper's First Bargain (6,2), The Founders' Wreck (west shore).
-- City: The Great Dial (-2,-2), The Tide-Bell (-6,2), The Lighthouse (north shore).
+## Landmarks (cosmetic, no effect; placed by the player, DECISIONS #27)
+They no longer appear on their own. From Town the player unlocks them in the Build sheet's Landmarks section and places each (free, one of each) on a free lot or a plaza tile, and can move it for free. Tap shows a plaque (name and one line). Art is lazy-loaded with the era (`land_town`, `land_city`).
+- Town: The Town Clock, Hesper's First Bargain, The Founders' Wreck.
+- City: The Great Dial, The Tide-Bell, The Lighthouse.
+Their old fixed positions (street junctions and the shore) are gone; the lots, caps and costs never changed.
 
 ## Art pipeline
 `python tools/art/build_art.py; python tools/art/build_eras.py; PYTHONHASHSEED=0 python tools/art/build_layout.py` (build_layout must run last: build_eras rewrites `manifest.eras`). It adds `scenery`, `streets_<era>`, `land_town`, `land_city`, `roofs_<era>` (roof and wall variants r1/r2 of cottages and workshops, so a block is not one colour).

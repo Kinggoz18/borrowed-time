@@ -202,9 +202,10 @@ export class GameUI {
     if (e.repeat) return;
     // M moves the building whose sheet is open
     if (a === "move") {
-      if (this.sheetOpen && this.layer.querySelector<HTMLElement>(".sheet")?.dataset.kind === "lot" && this.selected) {
+      const open = this.layer.querySelector<HTMLElement>(".sheet");
+      if (this.sheetOpen && open?.dataset.kind === "lot" && open.dataset.lot) {
         e.preventDefault();
-        this.startMove(this.selected);
+        this.startMove(open.dataset.lot);
       }
       return;
     }
@@ -706,6 +707,7 @@ export class GameUI {
     }
     const el = this.sheet(def.name, body);
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "lot";
+    el.querySelector<HTMLElement>(".sheet")!.dataset.lot = key;
   }
   private doUpgrade(key: string): void {
     if (!this.session!.do({ t: "upgrade", key })) return this.cue("deny");
