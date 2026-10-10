@@ -29,6 +29,8 @@ export interface GameHooks {
   /** Plays a dusk battle from an already-rolled result (tests and screenshots). */
   playRaid: (res: RaidResult) => Promise<void>;
   fps: () => number;
+  /** Which music track is playing (day or night), for the e2e tests. */
+  music: () => { running: boolean; current: string | null };
   error?: string;
 }
 
@@ -60,7 +62,7 @@ export async function bootGame(): Promise<void> {
   const haptics = new Haptics();
   sfx.setMixer({ sound: settings.sound, music: settings.music, sfxVol: settings.sfxVol, musicVol: settings.musicVol });
   haptics.enabled = settings.haptics;
-  sfx.setScene("menu");
+  sfx.setScene("day");
   sfx.unlock();
   addEventListener("pointerdown", () => sfx.unlock(), { once: true });
   const dev = import.meta.env.DEV;
@@ -129,6 +131,7 @@ export async function bootGame(): Promise<void> {
     showLot: (k) => view.showLot(k),
     playRaid: (res) => view.playRaid(res),
     fps: () => Math.round(fps),
+    music: () => ({ running: sfx.music.running, current: sfx.music.current }),
   };
   (window as unknown as { __bt: GameHooks }).__bt = hooks;
   if ((await import("@capacitor/core")).Capacitor.isNativePlatform()) void import("@capacitor/splash-screen").then(({ SplashScreen }) => SplashScreen.hide());

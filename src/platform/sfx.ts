@@ -3,8 +3,7 @@
  * Background music lives on a separate bus; see `music.ts`.
  */
 import { cueJitter, graph } from "./audio-graph";
-import { music, type Music } from "./music";
-import type { MusicScene } from "./score";
+import { music, type Music, type MusicScene } from "./music";
 
 export type Cue = "tap" | "build" | "upgrade" | "borrow" | "repay" | "coin" | "dusk" | "horn" | "held" | "lost" | "seize" | "tierUp" | "levelUp" | "deny";
 
@@ -76,8 +75,8 @@ export class Sfx {
     graph.duck(on);
   }
 
-  setScene(scene: MusicScene, era?: number): void {
-    this.music.set(scene, era ?? this.music.era);
+  setScene(scene: MusicScene): void {
+    this.music.set(scene);
   }
 
   setMixer(s: { sound: boolean; music: boolean; sfxVol: number; musicVol: number }): void {
@@ -89,14 +88,10 @@ export class Sfx {
     graph.applyGains();
   }
 
-  /** Open the graph and keep the score looping. Mute is gain 0, not a stop. */
+  /** Open the graph and start the music loop. Mute is gain 0, not a stop. */
   unlock(): void {
     graph.ensure();
     this.music.start();
-  }
-
-  sting(): void {
-    this.music.sting();
   }
 
   suspend(): void {

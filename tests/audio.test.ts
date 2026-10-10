@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { AudioGraph, MAX_VOICES, cueJitter, takeVoice } from "../src/platform/audio-graph";
-import { LOOP_S, STINGER, palette, score } from "../src/platform/score";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { CREDITS } from "../src/ui/credits";
+import { FADE_S, Music, fadeCurve, pickFormat, trackUrl } from "../src/platform/music";
 import { Sfx } from "../src/platform/sfx";
 import { DEFAULT_SETTINGS, SETTINGS_KEY, clampVol, loadSettings, saveSettings } from "../src/game/settings";
 import { MemoryKV } from "../src/platform/storage";
@@ -32,37 +34,53 @@ describe("voice cap and cue jitter", () => {
   });
 });
 
-describe("synthesised score", () => {
-  it("is deterministic and loopable", () => {
-    expect(LOOP_S).toBe(16);
-    const a = score(0, "day");
-    const b = score(0, "day");
-    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
-    for (const n of a) expect(n.t).toBeLessThan(LOOP_S);
+describe("music", () => {
+  it("picks Ogg where the browser plays it and AAC otherwise (iOS)", () => {
+    expect(pickFormat((m) => (m.includes("vorbis") ? "probably" : ""))).toBe("ogg");
+    expect(pickFormat(() => "")).toBe("m4a");
+    expect(trackUrl("day", "ogg", "/")).toBe("/audio/day.ogg");
+    expect(trackUrl("night", "m4a", "/bt/")).toBe("/bt/audio/night.m4a");
   });
-  it("Colony day is Tobias: fiddle, whistle, surf, and some bad cents", () => {
-    expect(palette(0, "day")).toEqual(expect.arrayContaining(["fiddle", "whistle", "surf", "drone"]));
-    expect(score(0, "day").some((n) => n.inst === "fiddle" && n.detune !== 0)).toBe(true);
-    expect(palette(0, "menu")).toEqual(palette(0, "day"));
-    const dayG = score(0, "day").find((n) => n.inst === "fiddle")!.gain;
-    const menuG = score(0, "menu").find((n) => n.inst === "fiddle")!.gain;
-    expect(menuG).toBeLessThan(dayG);
+  it("crossfades with equal power: in and out always sum to constant power", () => {
+    const up = fadeCurve(64, true), down = fadeCurve(64, false);
+    expect(up[0]).toBe(0);
+    expect(up[63]).toBeCloseTo(1, 5);
+    expect(down[0]).toBe(1);
+    expect(down[63]).toBeCloseTo(0, 5);
+    for (let i = 0; i < 64; i++) expect(up[i]! ** 2 + down[i]! ** 2).toBeCloseTo(1, 4);
+    expect(FADE_S).toBeGreaterThanOrEqual(2);
   });
-  it("each era has its own day palette", () => {
-    expect(palette(1, "day")).toEqual(expect.arrayContaining(["gurdy", "drum", "drone"]));
-    expect(palette(2, "day")).toEqual(expect.arrayContaining(["lute", "harpsichord", "tick", "drone"]));
-    expect(palette(3, "day")).toEqual(expect.arrayContaining(["brass", "hiss", "drone"]));
-    expect(palette(1, "day")).not.toContain("fiddle");
-    expect(palette(3, "day")).not.toContain("fiddle");
+  it("is safe with no audio device and before the first tap: it only remembers the track", () => {
+    const m = new Music();
+    m.set("night");
+    expect(m.scene).toBe("night");
+    expect(m.running).toBe(false);
+    m.start();
+    expect(m.running).toBe(false);
+    m.stop();
   });
-  it("dusk, raid, Hesper and the tier-up stinger are their own tables", () => {
-    expect(palette(0, "dusk")).toEqual(expect.arrayContaining(["bell", "drone"]));
-    expect(palette(0, "raid")).toEqual(expect.arrayContaining(["drone", "drum"]));
-    expect(palette(0, "raid")).not.toContain("fiddle");
-    expect(palette(0, "hesper")).toEqual(expect.arrayContaining(["box", "tick"]));
-    expect(STINGER).toHaveLength(4);
-    expect(STINGER.every((n) => n.inst === "bell")).toBe(true);
-    expect(JSON.stringify(score(2, "hesper"))).toBe(JSON.stringify(score(0, "hesper")));
+  it("ships two looping tracks in both formats, under 2.5 MB together, with no original files in the repo", () => {
+    let total = 0;
+    for (const t of ["day", "night"])
+      for (const ext of ["ogg", "m4a"]) {
+        const size = statSync(`public/audio/${t}.${ext}`).size;
+        expect(size).toBeGreaterThan(100_000);
+        total += size;
+      }
+    expect(total).toBeLessThan(2.5 * 1024 * 1024);
+    const stray = readdirSync("public/audio").filter((f) => !/^(day|night)\.(ogg|m4a)$/.test(f));
+    expect(stray).toEqual([]);
+  });
+  it("credits both artists and Pixabay in docs/CREDITS.md and in the Credits list the Settings screen shows", () => {
+    const doc = readFileSync("docs/CREDITS.md", "utf8");
+    expect(doc).toContain("Ribhav Agrawal");
+    expect(doc).toContain("Bryan Jesus De Los Santos Breton");
+    expect(doc).toContain("Pixabay");
+    for (const c of CREDITS) {
+      expect(doc).toContain(c.artist);
+      expect(c.source).toBe("Pixabay");
+    }
+    expect(CREDITS.map((c) => c.use)).toEqual(["Daytime music", "Night music"]);
   });
 });
 

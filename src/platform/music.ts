@@ -1,230 +1,160 @@
 /**
- * Background score. Always on, every screen. Scene follows the time of day and the sheet,
- * never a tap. Loops are synthesised from `score.ts` on the music bus.
+ * Background music: two looping tracks (public/audio, docs/CREDITS.md), one for the day and one for
+ * the night, on the music bus and apart from the sound effects. Always on, every screen: the track
+ * follows the hour of the island and the sheet, never a tap, and changes with an equal-power
+ * crossfade. Mute is gain 0 on the bus, not a stop, so the loop never restarts.
  */
 import { graph } from "./audio-graph";
-import { LOOP_S, STINGER, score, type Inst, type MusicScene, type Note } from "./score";
+
+export type MusicScene = "day" | "night";
+export type MusicFormat = "ogg" | "m4a";
+
+/** Seconds the old track takes to fade out while the new one fades in. */
+export const FADE_S = 4;
+export const TRACKS: Record<MusicScene, string> = { day: "day", night: "night" };
+
+/** Ogg Vorbis where the browser plays it (Android, desktop), AAC in .m4a otherwise (iOS Safari). */
+export function pickFormat(canPlay: (mime: string) => string): MusicFormat {
+  return canPlay('audio/ogg; codecs="vorbis"') !== "" ? "ogg" : "m4a";
+}
+export const trackUrl = (scene: MusicScene, format: MusicFormat, base = "/"): string => `${base}audio/${TRACKS[scene]}.${format}`;
+
+/** Equal-power fade curves: gain in and gain out sum to constant power. */
+export function fadeCurve(n: number, rising: boolean): Float32Array {
+  const c = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    c[i] = rising ? Math.sin((t * Math.PI) / 2) : Math.cos((t * Math.PI) / 2);
+  }
+  return c;
+}
+
+interface Lane {
+  gain: GainNode;
+  src: AudioBufferSourceNode | null;
+}
 
 export class Music {
-  scene: MusicScene = "menu";
-  era = 0;
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private loopT = 0;
-  private surf: AudioBufferSourceNode | null = null;
-  private drone: OscillatorNode[] = [];
-  private pending: Array<() => void> = [];
+  scene: MusicScene = "day";
+  private started = false;
+  private playing: MusicScene | null = null;
+  private buffers = new Map<MusicScene, Promise<AudioBuffer | null>>();
+  private lanes = new Map<MusicScene, Lane>();
+  private token = 0;
 
   get running(): boolean {
-    return this.timer !== null;
+    return this.started;
   }
 
+  /** The track that is (or is fading) in. */
+  get current(): MusicScene | null {
+    return this.playing;
+  }
+
+  /** First user gesture: open the graph and start the current track. */
   start(): void {
     const ctx = graph.ensure();
     if (!ctx) return;
-    this.cut();
-    this.stopHold();
-    this.hold();
-    this.loopT = ctx.currentTime;
-    this.arm();
+    this.started = true;
+    void this.play(this.scene, 1.2);
+    // the other track loads in the background so the first dusk crossfades without a wait
+    void this.load(this.scene === "day" ? "night" : "day");
   }
 
-  set(scene: MusicScene, era = this.era): void {
-    if (this.scene === scene && this.era === era && this.timer) return;
+  /** Switch tracks (a no-op when it is already playing). Safe before the first gesture: it only records the scene. */
+  set(scene: MusicScene): void {
     this.scene = scene;
-    this.era = Math.max(0, Math.min(3, era));
-    this.start();
-  }
-
-  sting(): void {
-    const ctx = graph.ensure();
-    if (!ctx || !graph.musicGain) return;
-    for (const n of STINGER) this.voice(n, ctx.currentTime + n.t);
-  }
-
-  private arm(): void {
-    if (this.timer) {
-      this.tick();
-      return;
-    }
-    this.timer = setInterval(() => this.tick(), 180);
-    this.tick();
+    if (this.started) void this.play(scene, FADE_S);
   }
 
   stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
-    this.cut();
-    this.stopHold();
-  }
-
-  private tick(): void {
-    const ctx = graph.ctx;
-    if (!ctx || !graph.musicGain) return;
-    const notes = score(this.era, this.scene);
-    const now = ctx.currentTime;
-    while (this.loopT + LOOP_S < now) this.loopT += LOOP_S;
-    while (this.loopT < now + 1.2) {
-      const origin = this.loopT;
-      for (const n of notes) {
-        if (n.dur >= LOOP_S - 0.01) continue;
-        const when = origin + n.t;
-        if (when + n.dur <= now) continue;
-        this.voice(n, when);
-      }
-      this.loopT += LOOP_S;
-    }
-  }
-
-  private hold(): void {
-    const ctx = graph.ctx;
-    const bus = graph.musicGain;
-    if (!ctx || !bus) return;
-    this.stopHold();
-    const notes = score(this.era, this.scene).filter((n) => n.dur >= LOOP_S - 0.01);
-    for (const n of notes) {
-      if (n.inst === "surf" || n.inst === "hiss") {
-        const src = ctx.createBufferSource();
-        src.buffer = noise(ctx);
-        src.loop = true;
-        const f = ctx.createBiquadFilter();
-        f.type = n.inst === "surf" ? "bandpass" : "highpass";
-        f.frequency.value = n.inst === "surf" ? 380 : 1200;
-        f.Q.value = n.inst === "surf" ? 0.7 : 0.4;
-        const g = ctx.createGain();
-        g.gain.value = n.gain;
-        src.connect(f).connect(g).connect(bus);
-        src.start();
-        this.surf = src;
-      } else {
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.type = "sine";
-        o.frequency.value = n.freq;
-        g.gain.value = n.gain;
-        o.connect(g).connect(bus);
-        o.start();
-        this.drone.push(o);
-      }
-    }
-  }
-
-  private stopHold(): void {
-    try {
-      this.surf?.stop();
-    } catch {
-      /* already stopped */
-    }
-    this.surf = null;
-    for (const o of this.drone) {
+    this.started = false;
+    this.token++;
+    for (const [, lane] of this.lanes) {
       try {
-        o.stop();
-      } catch {
-        /* already stopped */
-      }
-    }
-    this.drone = [];
-  }
-
-  private cut(): void {
-    for (const stop of this.pending) {
-      try {
-        stop();
+        lane.src?.stop();
       } catch {
         /* already ended */
       }
+      lane.src = null;
     }
-    this.pending = [];
+    this.playing = null;
   }
 
-  private voice(n: Note, when: number): void {
+  private load(scene: MusicScene): Promise<AudioBuffer | null> {
+    let p = this.buffers.get(scene);
+    if (p) return p;
+    p = (async () => {
+      const ctx = graph.ensure();
+      if (!ctx) return null;
+      try {
+        const fmt = pickFormat((m) => new Audio().canPlayType(m));
+        const res = await fetch(trackUrl(scene, fmt, import.meta.env.BASE_URL));
+        if (!res.ok) throw new Error(`music ${scene}: ${res.status}`);
+        return await ctx.decodeAudioData(await res.arrayBuffer());
+      } catch {
+        this.buffers.delete(scene); // try again on the next switch
+        return null;
+      }
+    })();
+    this.buffers.set(scene, p);
+    return p;
+  }
+
+  private lane(scene: MusicScene): Lane | null {
     const ctx = graph.ctx;
     const bus = graph.musicGain;
-    if (!ctx || !bus) return;
-    const stops: Array<() => void> = [];
-    const halt = (node: { stop: (t?: number) => void }) => {
-      stops.push(() => {
+    if (!ctx || !bus) return null;
+    let l = this.lanes.get(scene);
+    if (!l) {
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      gain.connect(bus);
+      l = { gain, src: null };
+      this.lanes.set(scene, l);
+    }
+    return l;
+  }
+
+  private async play(scene: MusicScene, fade: number): Promise<void> {
+    if (this.playing === scene) return;
+    const token = ++this.token;
+    this.playing = scene;
+    const buf = await this.load(scene);
+    const ctx = graph.ctx;
+    if (!buf || !ctx || token !== this.token) {
+      if (!buf && token === this.token) this.playing = null; // retry on the next set()/start()
+      return;
+    }
+    const incoming = this.lane(scene);
+    if (!incoming) return;
+    const now = ctx.currentTime;
+    if (!incoming.src) {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      src.connect(incoming.gain);
+      src.start(now);
+      incoming.src = src;
+    }
+    const n = 64;
+    incoming.gain.gain.cancelScheduledValues(now);
+    incoming.gain.gain.setValueCurveAtTime(fadeCurve(n, true), now, fade);
+    for (const [name, lane] of this.lanes) {
+      if (name === scene || !lane.src) continue;
+      lane.gain.gain.cancelScheduledValues(now);
+      lane.gain.gain.setValueCurveAtTime(fadeCurve(n, false), now, fade);
+      const old = lane.src;
+      lane.src = null;
+      setTimeout(() => {
         try {
-          node.stop();
+          old.stop();
         } catch {
           /* already ended */
         }
-      });
-    };
-    if (n.inst === "drum") {
-      const o = ctx.createOscillator();
-      const ng = ctx.createGain();
-      o.type = "sine";
-      o.frequency.setValueAtTime(n.freq, when);
-      o.frequency.exponentialRampToValueAtTime(30, when + n.dur);
-      ng.gain.setValueAtTime(n.gain, when);
-      ng.gain.exponentialRampToValueAtTime(0.0001, when + n.dur);
-      o.connect(ng).connect(bus);
-      o.start(when);
-      o.stop(when + n.dur + 0.02);
-      halt(o);
-      const src = ctx.createBufferSource();
-      src.buffer = noise(ctx);
-      const f = ctx.createBiquadFilter();
-      f.type = "lowpass";
-      f.frequency.value = 800;
-      const noisy = ctx.createGain();
-      noisy.gain.setValueAtTime(n.gain * 0.5, when);
-      noisy.gain.exponentialRampToValueAtTime(0.0001, when + n.dur * 0.6);
-      src.connect(f).connect(noisy).connect(bus);
-      src.start(when);
-      src.stop(when + n.dur);
-      halt(src);
-      this.pending.push(() => stops.forEach((s) => s()));
-      return;
+      }, fade * 1000 + 200);
     }
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0, when);
-    g.gain.linearRampToValueAtTime(n.gain, when + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, when + n.dur);
-    g.connect(bus);
-    const o = ctx.createOscillator();
-    o.type = wave(n.inst);
-    o.frequency.value = n.freq;
-    o.detune.value = n.detune;
-    if (n.inst === "fiddle" || n.inst === "gurdy") {
-      const lfo = ctx.createOscillator();
-      const lg = ctx.createGain();
-      lfo.frequency.value = n.inst === "fiddle" ? 5.4 : 6.2;
-      lg.gain.value = n.inst === "fiddle" ? 14 : 9;
-      lfo.connect(lg).connect(o.detune);
-      lfo.start(when);
-      lfo.stop(when + n.dur + 0.02);
-      halt(lfo);
-    }
-    o.connect(g);
-    o.start(when);
-    o.stop(when + n.dur + 0.03);
-    halt(o);
-    this.pending.push(() => stops.forEach((s) => s()));
   }
-}
-
-function wave(inst: Inst): OscillatorType {
-  if (inst === "fiddle" || inst === "gurdy" || inst === "brass") return "sawtooth";
-  if (inst === "harpsichord" || inst === "tick") return "square";
-  if (inst === "lute" || inst === "whistle" || inst === "box") return "triangle";
-  return "sine";
-}
-
-const noiseCache = new WeakMap<AudioContext, AudioBuffer>();
-function noise(ctx: AudioContext): AudioBuffer {
-  let buf = noiseCache.get(ctx);
-  if (buf) return buf;
-  const n = Math.floor(ctx.sampleRate * 1.5);
-  buf = ctx.createBuffer(1, n, ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  let s = 123456789;
-  for (let i = 0; i < n; i++) {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-    d[i] = (s / 0xffffffff) * 2 - 1;
-  }
-  noiseCache.set(ctx, buf);
-  return buf;
 }
 
 export const music = new Music();

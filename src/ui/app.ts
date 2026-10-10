@@ -16,6 +16,7 @@ import { FAST, Session } from "../game/session";
 import { saveSettings, type Settings } from "../game/settings";
 import type { KV } from "../platform/storage";
 import type { Cue, Haptics, Sfx } from "../platform/sfx";
+import { CREDITS } from "./credits";
 import { applyOrientation } from "../platform/orientation";
 import { BAND_WORD, BLURB, HIDDEN_TITLE, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
 import { h, icon, type Child } from "./dom";
@@ -796,7 +797,6 @@ export class GameUI {
     const up = evs.find((e) => e.kind === "tierUp");
     if (up && up.kind === "tierUp") {
       this.cue("tierUp", "heavy");
-      this.d.sfx.sting();
       await this.d.view.playTierUp();
       this.d.view.setLots(s.state);
       this.d.view.sync(s.state);
@@ -875,18 +875,18 @@ export class GameUI {
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "journal";
   }
 
-  /** Scene follows the screen and the hour, never a tap. */
-  private scoreScene(scene?: "menu" | "day" | "dusk" | "raid" | "hesper"): void {
-    const era = this.session?.state.tier ?? 0;
+  /** The track follows the screen and the hour, never a tap: menus and daylight play the day track, dusk, raids and night the night track, Hesper's card keeps whichever is playing. */
+  private scoreScene(scene?: "menu" | "dusk" | "raid" | "hesper"): void {
+    if (scene === "hesper") return;
     if (scene) {
-      this.d.sfx.setScene(scene, era);
+      this.d.sfx.setScene(scene === "menu" ? "day" : "night");
       return;
     }
     if (!this.session || this.screen === "home") {
-      this.d.sfx.setScene("menu", 0);
+      this.d.sfx.setScene("day");
       return;
     }
-    this.d.sfx.setScene(this.session.state.phase === "day" ? "day" : "dusk", era);
+    this.d.sfx.setScene(this.session.state.phase === "day" ? "day" : "night");
   }
 
   // ---------- settings ----------
@@ -949,12 +949,18 @@ export class GameUI {
         "label",
         { class: "setting" },
         icon("rotate"),
-        h("span", {}, "Screen"),
+        h("span", {}, "Layout"),
         h("select", { "data-set": "orientation", onchange: (e) => {
           st.orientation = (e.target as HTMLSelectElement).value as Settings["orientation"];
           void saveSettings(this.d.kv, st);
           void applyOrientation(st.orientation);
         } }, ...(["landscape", "portrait", "auto"] as const).map((o) => h("option", { value: o, selected: st.orientation === o }, o === "auto" ? "Auto" : o[0].toUpperCase() + o.slice(1)))),
+      ),
+      h(
+        "section",
+        { class: "credits", "data-credits": "" },
+        h("h3", {}, "Credits"),
+        ...CREDITS.map((c) => h("p", {}, h("b", {}, `${c.use}: `), `${c.title}, music by ${c.artist} from ${c.source}.`)),
       ),
       this.session && h("button", { class: "btn big danger", "data-act": "reset", onclick: async () => {
         const a = await this.card({ title: "Reset the island?", body: ["This deletes your colony for good."], buttons: [{ id: "yes", label: "Delete my colony", kind: "danger" }, { id: "no", label: "Keep it" }] });
