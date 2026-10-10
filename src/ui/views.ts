@@ -8,7 +8,7 @@ import { charter } from "./charterModel";
 import { BLURB, CHARTER, LM, MARKS_EMPTY } from "./copy";
 import { h, icon, ICON, type Child } from "./dom";
 import { J_EMPTY, J_ERROR, J_FILTERS, J_NONE } from "./journalCopy";
-import { chaptered, ariaFor, journalEntries, PAGE, type JEntry, type JFilter } from "./journalModel";
+import { ariaFor, journalEntries, journalPages, pageForEra, pageIndexOf, type JEntry, type JFilter } from "./journalModel";
 import { ledgerRows, profileColony, profileIsland } from "./profileModel";
 import { goalModel } from "./hudModel";
 import { bar2, tabs, tag, type Tone } from "./widgets";
@@ -277,38 +277,60 @@ export function journalView(c: Ctx, o: { events: readonly LoggedEvent[]; seed: n
   );
   void era;
   const list = h("div", { class: "j-list" });
+  const pager = h("div", { class: "j-pager", role: "group", "aria-label": "Journal days" });
   let filter: JFilter = "all";
-  let shown = PAGE;
+  /** the day on show ("season:day"); null = the newest day */
+  let day: string | null = null;
   const jump = cover.querySelector<HTMLElement>(".cover-nav")!;
   const paint = (): void => {
-    const groups = chaptered(all, filter);
+    const pages = journalPages(all, filter);
+    const at = pageIndexOf(pages, day);
+    const page = pages[at];
+    day = page?.key ?? null;
     list.replaceChildren();
+    pager.replaceChildren();
+    pager.hidden = !pages.length;
     jump.querySelectorAll("button").forEach((b) => b.remove());
     if (!all.length) {
       list.append(h("div", { class: "state-box" }, portrait("pt"), h("h3", {}, J_EMPTY.title), h("p", {}, J_EMPTY.text), replay("btn")));
       return;
     }
-    if (!groups.length) {
+    if (!page) {
       list.append(h("div", { class: "state-box" }, h("h3", {}, J_NONE.title), h("p", {}, J_NONE.text)));
       return;
     }
-    groups.slice(0, shown).forEach(({ chapter, entry: e }) => {
-      if (chapter) {
-        const hd = h("div", { class: "j-chapter", id: `jc-${chapter.era}` }, h("span", { class: "kicker" }, chapter.kicker), h("h3", {}, chapter.name), h("span", { class: "rule" }));
-        list.append(hd);
-        jump.append(h("button", { class: "btn small", type: "button", onclick: () => hd.scrollIntoView({ block: "start", behavior: "smooth" }) }, chapter.name));
-      }
+    const go = (i: number): void => {
+      day = pages[Math.max(0, Math.min(pages.length - 1, i))]!.key;
+      paint();
+      list.scrollTop = 0;
+    };
+    // newest day first: "Newer" walks back towards today, "Earlier" walks into the past
+    const newer = h("button", { class: "btn small jp-step", type: "button", "data-act": "journal-newer", "aria-label": "Newer day", disabled: at === 0, onclick: () => go(at - 1) }, "\u2039 Newer");
+    const older = h("button", { class: "btn small jp-step", type: "button", "data-act": "journal-earlier", "aria-label": "Earlier day", disabled: at === pages.length - 1, onclick: () => go(at + 1) }, "Earlier \u203a");
+    const pick = h(
+      "select",
+      { class: "jp-pick", "aria-label": "Jump to a day", "data-act": "journal-day", onchange: (ev: Event) => { day = (ev.currentTarget as HTMLSelectElement).value; paint(); list.scrollTop = 0; } },
+      ...pages.map((p) => h("option", { value: p.key, selected: p.key === page.key }, `${p.label} (${p.count})`)),
+    );
+    pager.append(newer, h("div", { class: "jp-mid" }, h("b", { class: "jp-title", "data-act": "journal-title" }, page.label), h("span", { class: "jp-of" }, `Page ${at + 1} of ${pages.length}`), pick), older);
+    for (const { chapter, entry: e } of page.groups) {
+      if (chapter) list.append(h("div", { class: "j-chapter", id: `jc-${chapter.era}` }, h("span", { class: "kicker" }, chapter.kicker), h("h3", {}, chapter.name), h("span", { class: "rule" })));
       list.append(entryEl(e));
-    });
-    list.append(h("div", { class: "j-end" }, groups.length > shown ? h("button", { class: "btn small", type: "button", "data-act": "earlier", onclick: () => { shown += PAGE; paint(); } }, "Earlier pages") : null, replay("btn link small")));
+    }
+    // chapter buttons in the cover walk to the day an age's heading sits on
+    for (const p of pages) for (const g of p.groups) if (g.chapter) {
+      const era = g.chapter.era;
+      jump.append(h("button", { class: "btn small", type: "button", onclick: () => go(pageForEra(pages, era)) }, g.chapter.name));
+    }
+    list.append(h("div", { class: "j-end" }, replay("btn link small")));
   };
   const filters = h(
     "div",
     { class: "j-filters-wrap" },
-    h("div", { class: "j-filters", role: "group", "aria-label": "Show" }, ...J_FILTERS.map((f) => h("button", { class: "chipf", type: "button", "data-tab": `jf:${f.id}`, "aria-pressed": String(f.id === "all"), onclick: (ev: Event) => { filter = f.id; shown = PAGE; filters.querySelectorAll<HTMLElement>(".chipf").forEach((b) => b.setAttribute("aria-pressed", String(b === ev.currentTarget))); paint(); } }, f.id === "all" ? null : icon(f.icon as Ic), f.label))),
+    h("div", { class: "j-filters", role: "group", "aria-label": "Show" }, ...J_FILTERS.map((f) => h("button", { class: "chipf", type: "button", "data-tab": `jf:${f.id}`, "aria-pressed": String(f.id === "all"), onclick: (ev: Event) => { filter = f.id; filters.querySelectorAll<HTMLElement>(".chipf").forEach((b) => b.setAttribute("aria-pressed", String(b === ev.currentTarget))); paint(); } }, f.id === "all" ? null : icon(f.icon as Ic), f.label))),
   );
   paint();
-  root.append(cover, h("div", { class: "jcol", style: "display:grid;min-height:0;grid-template-rows:auto 1fr" }, all.length ? filters : h("div"), list));
+  root.append(cover, h("div", { class: "jcol", style: "display:grid;min-height:0;grid-template-rows:auto auto 1fr" }, all.length ? filters : h("div"), pager, list));
   return [root];
 }
 

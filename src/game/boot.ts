@@ -2,6 +2,7 @@
 import { Application } from "pixi.js";
 import { newGame, type RaidResult } from "../core/engine";
 import { SAVE_KEY } from "../core/save";
+import type { LoggedEvent } from "../core/game";
 import { cloneState } from "../core/snapshot";
 import type { IslandState } from "../core/state";
 import { detectTier, probeDevice, TIERS } from "../perf/quality";
@@ -33,6 +34,8 @@ export interface GameHooks {
   playRaid: (res: RaidResult) => Promise<void>;
   /** The Long Dusk shadow's on-screen box while it stands (tests and screenshots). */
   shadowRect: () => { x: number; y: number; w: number; h: number; rise: number } | null;
+  /** The island's event log, live (tests write synthetic days into it). */
+  events: () => LoggedEvent[];
   /** Stops or restarts time inside the island view, to photograph one beat of a battle (tests). */
   hold: (on: boolean) => void;
   fps: () => number;
@@ -139,6 +142,7 @@ export async function bootGame(): Promise<void> {
     showLandmark: (id) => view.showLandmark(id),
     showLot: (k) => view.showLot(k),
     playRaid: (res) => view.playRaid(res),
+    events: () => session?.data.events ?? [],
     shadowRect: () => view.shadowRect(),
     hold: (on) => void (view.hold = on),
     fps: () => Math.round(fps),

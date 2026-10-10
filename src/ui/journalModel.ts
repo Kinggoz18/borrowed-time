@@ -159,5 +159,45 @@ export function chaptered(entries: readonly JEntry[], filter: JFilter): JChapter
   });
 }
 
+/** One page of the Journal: everything that happened on one in-game day, newest entry first. */
+export interface JPage {
+  /** "season:day", unique per page */
+  key: string;
+  season: number;
+  day: number;
+  label: string;
+  groups: JChapterGroup[];
+  count: number;
+}
+
+export const dayLabel = (season: number, day: number): string => `Season ${season} \u00b7 Day ${day}`;
+
+/**
+ * The book by day: one page per in-game day that has something to show under the filter, newest day first
+ * (days with nothing are skipped). The chapter heading of an age sits on the page where that age first shows.
+ */
+export function journalPages(entries: readonly JEntry[], filter: JFilter): JPage[] {
+  const pages: JPage[] = [];
+  const byKey = new Map<string, JPage>();
+  for (const g of chaptered(entries, filter)) {
+    const key = `${g.entry.season}:${g.entry.day}`;
+    let page = byKey.get(key);
+    if (!page) {
+      page = { key, season: g.entry.season, day: g.entry.day, label: dayLabel(g.entry.season, g.entry.day), groups: [], count: 0 };
+      byKey.set(key, page);
+      pages.push(page);
+    }
+    page.groups.push(g);
+    page.count++;
+  }
+  return pages;
+}
+
+/** Index of the page for a day key, or the newest page when it is not there (a filter may have dropped it). */
+export const pageIndexOf = (pages: readonly JPage[], key: string | null): number => Math.max(0, pages.findIndex((p) => p.key === key));
+
+/** Index of the page that carries an age's chapter heading, or the newest page. */
+export const pageForEra = (pages: readonly JPage[], era: number): number => Math.max(0, pages.findIndex((pg) => pg.groups.some((g) => g.chapter?.era === era)));
+
 export const PAGE = 60;
 export const ariaFor = (e: JEntry): string => `Season ${e.season}, Day ${e.day}. ${e.title}.`;
