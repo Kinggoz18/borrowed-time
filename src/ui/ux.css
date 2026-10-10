@@ -246,7 +246,6 @@ h3.sec .ico{width:1.25rem;height:1.25rem}
 .bcard .why{font-size:var(--t-cap);font-weight:800;color:var(--debt-ink);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .bcard .why .btn{min-height:44px}
 .bcard.credit{border-color:var(--hesper)}
-.bcard.credit .pen{display:inline-flex;align-items:center;gap:4px;font-size:var(--t-cap);font-weight:800;color:#6e2f14;background:var(--debt-bg);border:1.5px solid var(--debt);padding:0 6px;border-radius:2px}
 .bcard.off .thumb img{opacity:.75}
 .bcard.done{background:var(--paper)}
 .buy{flex-direction:column;gap:0;min-width:5.25rem;min-height:3.5rem;padding:2px 8px}

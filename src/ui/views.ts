@@ -169,7 +169,7 @@ function cardEl(c: Ctx, cd: BuildCard, o: BuildOpts): HTMLElement {
     "article",
     { class: cls, "data-build": t, onclick: cd.state === "credit" ? o.onHesper : undefined },
     h("div", { class: "thumb" }, c.thumb(t) ? h("img", { alt: "", src: c.thumb(t) }) : icon(BLD_ICON[t] ?? "build")),
-    h("div", { class: "tx" }, h("div", { class: "nm" }, h("b", {}, cd.name), cd.meta ? h("small", {}, cd.meta) : cd.credit ? h("span", { class: "pen" }, icon("owed"), "On credit") : null), h("span", { class: "bl" }, BLURB[t] ?? ""), why),
+    h("div", { class: "tx" }, h("div", { class: "nm" }, h("b", {}, cd.name), cd.meta ? h("small", {}, cd.meta) : null), h("span", { class: "bl" }, BLURB[t] ?? ""), why),
     btn ?? tail,
   );
 }
