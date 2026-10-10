@@ -1,6 +1,6 @@
 # Pixel-art pipeline
 
-`python tools/art/build_art.py` (needs numpy, scipy, Pillow) writes `public/art/`:
+`python tools/art/build_art.py` then `python tools/art/build_eras.py` (the second merges the era sets into the manifest the first writes) (needs numpy, scipy, Pillow) writes `public/art/`:
 `manifest.json` (scales, era sets, anchors, shore masks), `<m|l>/<set>.png|json` (PNG-8 atlases on one shared
 palette, one page each, max 2048) and the tiling sea textures. `m` is the fine grid (High tier), `l` the chunky
 grid (Low and Medium); one art pixel is 1/s world units, so the camera snaps to whole device pixels per art pixel.

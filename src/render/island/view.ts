@@ -14,6 +14,7 @@ import type { TierConfig } from "../config";
 import { AMBIENT, crestAlpha, gullPose, gullSpecs, rng, seaState, seaStepsPerSecond, WAVE_DIR, type Ambient, type GullPose as GullPoseT, type GullSpec } from "./ambient";
 import { BATTLE_RESOLVED_EVENT, battleTimeline, boatCount, prefersReducedMotion, raiderCount } from "./battle";
 import { coastFor } from "./coast";
+import { defaultZoom, MIN_LOT_PX } from "./framing";
 import { cellAt, cellFront, depth, eraOf, layoutIsland, lotCornerKeys, radius, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
 import { pickAt } from "./pick";
 import { toTextures, type IslandTextures } from "./textures";
@@ -50,10 +51,6 @@ const isWatch = (job: Job) => job === "watch" || job === "nell";
 let hudTop = 64;
 let railRight = 104;
 let barBottom = 0;
-/** Gameplay camera starts this much closer than "whole island fits" (owner: too far out). */
-export const PLAY_ZOOM = 1.6;
-/** ...and never shows a lot narrower than this on screen (CSS px), so buildings stay readable as the ring grows. */
-export const MIN_LOT_PX = 136;
 
 /** A pooled foam crest rolling toward the island during the raid. */
 interface Crest {
@@ -426,7 +423,7 @@ export class IslandView {
     if (reset || !this.userCam || this.rawZoom < this.fitZoom) {
       this.userCam = false;
       // Play starts zoomed in so buildings and people read; pinch out to see the whole island and its sea.
-      this.rawZoom = this.snapDefault(Math.max(this.ringFit * PLAY_ZOOM, MIN_LOT_PX / TW));
+      this.rawZoom = defaultZoom({ ringFit: this.ringFit, fitZoom: this.fitZoom, per: this.app.renderer.resolution * this.art.u });
       this.cx = pb.x + pb.w / 2;
       this.cy = pb.y + pb.h / 2;
     }
@@ -500,14 +497,6 @@ export class IslandView {
     // whole device pixels, so the art-pixel grid never straddles a screen pixel
     this.world.position.set(Math.round((a.x + a.w / 2 - this.cx * this.zoom) * res) / res, Math.round((a.y + a.h / 2 - this.cy * this.zoom) * res) / res);
     this.applyCamera();
-  }
-  /** The default view leans closer: round up to the next whole device pixel per art pixel unless it is just over one. */
-  private snapDefault(z: number): number {
-    const per = this.app.renderer.resolution * this.art.u;
-    const d = z * per;
-    if (d < 1) return z;
-    const f = d - Math.floor(d);
-    return (f >= 0.3 ? Math.ceil(d) : Math.max(1, Math.floor(d))) / per;
   }
   /** Whole device pixels per art pixel (pixel-exact, no shimmer); only the far overview may go below 1:1. */
   private snapZoom(z: number): number {

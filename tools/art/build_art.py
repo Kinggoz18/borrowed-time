@@ -55,6 +55,9 @@ for n, a in shore.items():
 manifest_info["shore"] = {"cells": shore_cells, "masks": {str(k): v for k, v in shore_names.items()}}
 
 # ------------------------------------------------------------------------------------------------ ambient sprites (generated art, keyed)
+AMB = 0.75                                         # ambient sprites (gulls, smoke, flags, foam, grass) are drawn at 75% (owner: scale them out, DECISIONS #25)
+
+
 def layer(name, scale=0.12):
     im = Image.open(f"{HERE}/src/{name}.png").convert("RGBA")
     a = hard(box_down(im, scale / 0.4))
@@ -62,21 +65,21 @@ def layer(name, scale=0.12):
     return a
 
 for i in range(4):
-    g = layer(f"gull_{i}", 0.12)
+    g = layer(f"gull_{i}", AMB * 0.12)
     if i == 2:                                      # gull_2 was drawn facing right; every frame faces LEFT (the game mirrors for right-flying birds)
         g = g[:, ::-1].copy()
     add("shared", f"fx/gull/{i}", g, g.shape[1] // 2, g.shape[0] // 2)
 for i in range(4):
-    c = layer(f"foam_{i}", 0.12)[:, ::-1].copy()    # wave crests curl towards the island side: all face LEFT, and roll left/up in game
+    c = layer(f"foam_{i}", AMB * 0.12)[:, ::-1].copy()    # wave crests curl towards the island side: all face LEFT, and roll left/up in game
     add("shared", f"fx/crest/{i}", c, c.shape[1] // 2, c.shape[0] // 2)
 for i in range(5):
-    sm = layer(f"smoke_{i}", 0.1)
+    sm = layer(f"smoke_{i}", AMB * 0.1)
     add("shared", f"fx/smoke/{i}", sm, sm.shape[1] // 2, sm.shape[0] // 2)
 for i in range(4):
-    fl = layer(f"flag_{i}", 0.1)
+    fl = layer(f"flag_{i}", AMB * 0.1)
     add("shared", f"fx/flag/{i}", fl, 1, 1)
 for gi in range(4):
-    g = layer(f"grass_{gi}", 0.1)
+    g = layer(f"grass_{gi}", AMB * 0.1)
     for si, dx in enumerate([-1, 0, 1]):
         h, w = g.shape[:2]
         pad = 2
