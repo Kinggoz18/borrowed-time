@@ -11,6 +11,9 @@ import { ERA_TYPES, LOOKS_PER_ERA } from "../../art/island/buildings";
 import type { Era } from "../../art/island/palette";
 import type { RingPiece } from "../../art/island/scenery";
 import { coastFor, SHORE_CELLS } from "./coast";
+import { landmarkFrame, landmarksFor } from "./landmarks";
+import { forestProps, lotGreens } from "./greens";
+import { gateCell, logical, phys, physRadius, streetAt, streetMask } from "../../core/streets";
 
 /** Buildings draw a little larger than their lot so they read on a phone (owner feedback). */
 export const BUILDING_SCALE = 1.3;
@@ -23,12 +26,26 @@ export function cellAt(x: number, y: number): { i: number; j: number } {
   const a = (y - TH / 2) / TH, b = x / TW;
   return { i: Math.round(a + b), j: Math.round(a - b) };
 }
+/** Where a lot stands on the ground: the lot grid is spread into city blocks with a street between them (core/streets.ts). */
+export const lotFront = (i: number, j: number): { x: number; y: number } => cellFront(phys(i), phys(j));
+/** The lot key under a world point, or null on a street, beyond the grid or at the gnomon. */
+export function lotAt(x: number, y: number): { i: number; j: number } | null {
+  const c = cellAt(x, y);
+  const i = logical(c.i), j = logical(c.j);
+  return i === null || j === null ? null : { i, j };
+}
 /** Draw order: back to front, then left to right; tall things after ground at the same cell. */
 export const depth = (i: number, j: number, lift = 0): number => (i + j) * 100 + (i - j) + lift;
 
 export const ERAS: readonly Era[] = ["colony", "village", "town", "city"];
 export const eraOf = (tier: number): Era => ERAS[Math.max(0, Math.min(ERAS.length - 1, tier))];
 export const radius = (tier: number): number => (TIERS[tier].grid - 1) / 2;
+/**
+ * The island is one fixed piece of land from the first day: its coast is cut for this radius, big
+ * enough for the final City grid and its ring with a wide margin of meadow and beach. Only the
+ * ring (the claimed, buildable ground) grows; the unclaimed land is open meadow and forest.
+ */
+export const ISLAND_R = 15;
 
 export interface Placed {
   frame: string;
@@ -55,6 +72,8 @@ export interface IslandLayout {
   /** Hesper's tent, east shore outside the ring */
   tent: { x: number; y: number };
   gate: { x: number; y: number };
+  /** the landmarks this tier shows (cosmetic): where they stand and what their plaque says */
+  landmarks: { id: string; name: string; plaque: string; i: number; j: number; x: number; y: number }[];
 }
 
 const hash = (i: number, j: number): number => {
@@ -74,15 +93,16 @@ export function ringStage(st: IslandState): number {
   return st.pal ? Math.min(3, stageOf(st.pal.n)) : -1;
 }
 
-/** The ring sits one cell outside the lots and re-fits whenever the tier (grid) grows. */
+/** The ring sits one cell outside the built area (physical cells) and re-fits whenever the tier (grid) grows; its gate opens on the avenue. */
 export function ringCells(r: number): { i: number; j: number; piece: RingPiece | "gate" }[] {
-  const R = r + 1;
+  const R = physRadius(r) + 1;
+  const g = gateCell(r);
   const out: { i: number; j: number; piece: RingPiece | "gate" }[] = [];
   for (let i = -R; i <= R; i++)
     for (let j = -R; j <= R; j++) {
       if (Math.max(Math.abs(i), Math.abs(j)) !== R) continue;
       const corner = Math.abs(i) === R && Math.abs(j) === R;
-      const piece: RingPiece | "gate" = corner ? "post" : i === R && j === 0 ? "gate" : Math.abs(j) === R ? "segA" : "segB";
+      const piece: RingPiece | "gate" = corner ? "post" : i === g.i && j === g.j ? "gate" : Math.abs(j) === R ? "segA" : "segB";
       out.push({ i, j, piece });
     }
   return out;
@@ -104,25 +124,42 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
   const grey = E.greySet(st);
   const { owner, size } = E.claims(st);
   const roadOn = !!st.road;
+  const streetCells: { i: number; j: number; mask: number; kind: string }[] = [];
   const ground: Placed[] = [];
   const shore: Placed[] = [];
   const things: Placed[] = [];
-  const coast = coastFor(r);
-  const isSand = (i: number, j: number): boolean => Math.max(Math.abs(i), Math.abs(j)) >= r + 2 && coast.sandy(i, j);
+  const coast = coastFor(ISLAND_R);
+  const isSand = (i: number, j: number): boolean => Math.max(Math.abs(i), Math.abs(j)) >= physRadius(r) + 2 && coast.sandy(i, j);
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  const PR = physRadius(r);
+  const greyFrame = (era: Era, kind: string, v: number, g: boolean): string => groundFrame(era, kind, v, g);
+  void greyFrame;
   for (const { i, j } of coast.cells) {
+    // (i, j) is a physical cell; a lot cell maps back to its logical key (core/streets.ts)
     const m = Math.max(Math.abs(i), Math.abs(j));
     const h = hash(i, j);
-    const key = `${i},${j}`;
-    const isLot = key in st.lots;
-    let kind = m >= r + 2 ? (isSand(i, j) ? "sand" : "grass") : isLot ? "lot" : "grass";
+    const li = logical(i), lj = logical(j);
+    const key = li !== null && lj !== null && m <= PR ? `${li},${lj}` : "";
+    const isLot = key !== "" && key in st.lots;
+    let kind = m >= PR + 2 ? (isSand(i, j) ? "sand" : "grass") : isLot ? "lot" : "grass";
     if (isLot && st.lots[key]?.type === "field") kind = "plot";
-    if (isLot && roadOn && (i === 0 || j === 0) && st.lots[key] === null && !owner[key]) kind = "road";
-    if (m === r + 1 && i === r + 1 && j === 0 && roadOn) kind = "road";
     const p = cellFront(i, j);
+    // streets between the blocks: flush paved tiles once Roads are bought (a dirt track before), joined by junction masks
+    let frame: string | null = null;
+    const gate = gateCell(r);
+    const isGateRoad = i === gate.i && j === gate.j;
+    const sk = isGateRoad ? "street" : streetAt(i, j, r);
+    if (sk) {
+      const mask = streetMask(i, j, r);
+      const paved = roadOn && era !== "colony";
+      const cand = sk === "plaza" ? `plaza/${era}` : paved ? `st/${era}/${mask}/${Math.floor(h * 2)}` : `st/track/${mask}`;
+      if (opts.pixel?.(cand)) frame = cand;
+      else if (paved && sk === "street") kind = "road";
+      streetCells.push({ i, j, mask, kind: sk });
+    }
     x0 = Math.min(x0, p.x - TW / 2); x1 = Math.max(x1, p.x + TW / 2);
     y0 = Math.min(y0, p.y - TH); y1 = Math.max(y1, p.y);
-    ground.push({ frame: groundFrame(era, kind, Math.floor(h * 3), isLot && grey.has(key)), x: p.x, y: p.y, z: depth(i, j), key: isLot ? key : undefined });
+    ground.push({ frame: frame ?? groundFrame(era, kind, Math.floor(h * 3), isLot && grey.has(key)), x: p.x, y: p.y, z: depth(i, j), key: isLot ? key : undefined });
     // soft grass/sand border: the cell next to the other kind gets an overlay cut from the smoothed 3x3 neighbourhood (no 1-cell zigzag)
     if ((kind === "grass" || kind === "sand") && opts.pixel) {
       const own = kind === "sand";
@@ -142,7 +179,7 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
     const [i, j] = kij(key);
     const n = size[key] ?? 1;
     const { frameType, stage } = lookFor(era, b.type, b.n);
-    const p = cellFront(i, j);
+    const p = lotFront(i, j);
     // a 2×2 / 3×3 claim extends behind the owner lot: centre the sprite on the footprint
     const cx = p.x, cy = p.y - ((n - 1) * TH) / 2;
     // fields are a flush ground decal: do not scale them past the lot (A6)
@@ -153,6 +190,33 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
     if (native) frame = big;
     const scale = native ? 1 : b.type === "field" || opts.pixel?.(frame) ? n : n * BUILDING_SCALE;
     things.push({ frame, x: cx, y: cy + ((n - 1) * TH) / 2, z: depth(i, j, 10), key, scale });
+  }
+  const has = (f: string): boolean => !!opts.pixel?.(f);
+  const tentCell = { i: PR + 2, j: -PR + 1 };
+  const at = (i: number, j: number, frame: string, z: number, dx = 0, dy = 0): Placed => {
+    const q = cellFront(i, j);
+    return { frame, x: q.x + dx, y: q.y - TH / 2 + dy, z: depth(i, j, z) };
+  };
+  if (opts.pixel) {
+    // open land: woods and bushes on the meadow the ring has not claimed (cleared as it grows), a bush on some empty lots
+    for (const pr of forestProps(coast, PR, tentCell)) if (has(pr.frame)) things.push(at(pr.i, pr.j, pr.frame, 6, pr.dx, pr.dy));
+    for (const key of Object.keys(st.lots)) {
+      if (st.lots[key] !== null || owner[key]) continue;
+      const [i, j] = kij(key);
+      const gp = lotGreens(i, j);
+      if (gp && has(gp.frame)) things.push(at(phys(i), phys(j), gp.frame, 3, gp.dx, gp.dy));
+    }
+    // a lamp post at every junction once the streets are paved
+    if (roadOn && (era === "town" || era === "city") && has(`sc/lamp/${era}`))
+      for (const c of streetCells) if (c.kind === "street" && [1, 2, 4, 8].filter((b) => c.mask & b).length >= 3) things.push(at(c.i, c.j, `sc/lamp/${era}`, 8, -20, 8));
+  }
+  const landmarks: IslandLayout["landmarks"] = [];
+  for (const lm of landmarksFor(st.tier, coast)) {
+    const frame = landmarkFrame(lm.def.id);
+    if (opts.pixel && !has(frame)) continue; // its era page has not streamed in yet
+    const q = cellFront(lm.i, lm.j);
+    things.push({ frame, x: q.x, y: q.y, z: depth(lm.i, lm.j, lm.def.id === "dial" ? 2 : 12) });
+    landmarks.push({ id: lm.def.id, name: lm.def.name, plaque: lm.def.plaque, i: lm.i, j: lm.j, x: q.x, y: q.y });
   }
   const g = cellFront(0, 0);
   things.push({ frame: "gnomon", x: g.x, y: g.y, z: depth(0, 0, 10), key: "0,0" });
@@ -165,13 +229,14 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
       ring.push({ frame, x: p.x, y: p.y, z: depth(c.i, c.j, 5) });
     }
   // Hesper's tent on the eastern shore (LORE.md): just outside the ring, to the right
-  const tc = cellFront(r + 2, -r + 1);
-  things.push({ frame: "tent", x: tc.x, y: tc.y, z: depth(r + 2, -r + 1, 10) });
+  const tc = cellFront(tentCell.i, tentCell.j);
+  things.push({ frame: "tent", x: tc.x, y: tc.y, z: depth(tentCell.i, tentCell.j, 10) });
   // Hesper waits at her tent flap with the ledger
-  things.push({ frame: "p/hesper/0", x: tc.x - 30, y: tc.y + 10, z: depth(r + 2, -r + 1, 11) });
-  const gate = cellFront(r + 1, 0);
+  things.push({ frame: "p/hesper/0", x: tc.x - 30, y: tc.y + 10, z: depth(tentCell.i, tentCell.j, 11) });
+  const gp0 = gateCell(r);
+  const gate = cellFront(gp0.i, gp0.j);
   // the play camera frames the ring edge to edge; the minimum zoom shows the whole island and its sea
-  const F = r + 1;
+  const F = PR + 1;
   const ft = cellFront(-F, -F), fb = cellFront(F, F), fl = cellFront(-F, F), fr = cellFront(F, -F);
   const sea = 90;
   return {
@@ -186,6 +251,7 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
     bounds: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 },
     tent: tc,
     gate,
+    landmarks,
   };
 }
 

@@ -6,7 +6,7 @@ import * as E from "../../core/engine";
 import { kij } from "../../core/rules";
 import type { IslandState } from "../../core/state";
 import type { Job } from "../../art/island/people";
-import { cellFront, radius, TH } from "./layout";
+import { lotFront, radius, TH } from "./layout";
 
 export type PersonView = "se" | "sw" | "ne" | "nw";
 
@@ -28,7 +28,7 @@ const JOB_OF: Record<string, Job> = {
 
 export const lotCentre = (key: string): { x: number; y: number } => {
   const [i, j] = kij(key);
-  const p = cellFront(i, j);
+  const p = lotFront(i, j);
   return { x: p.x, y: p.y - TH / 2 };
 };
 
@@ -80,13 +80,15 @@ export function blockedLots(st: IslandState, allow: Set<string>): Set<string> {
   return blocked;
 }
 
+const edgeOfBlock = (c: number): boolean => (((c + 1) % 3) + 3) % 3 !== 1;
 export function roadLots(st: IslandState): Set<string> {
   const roads = new Set<string>();
   const r = radius(st.tier);
   for (let i = -r; i <= r; i++)
     for (let j = -r; j <= r; j++) {
       if (!i && !j) continue;
-      if (st.road ? i === 0 || j === 0 : false) roads.add(`${i},${j}`);
+      // walkers keep to the kerbs: the lots on a block's edge, beside the street (core/streets.ts)
+      if (st.road && (edgeOfBlock(i) || edgeOfBlock(j))) roads.add(`${i},${j}`);
     }
   return roads;
 }

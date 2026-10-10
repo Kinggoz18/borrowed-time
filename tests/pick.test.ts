@@ -4,7 +4,7 @@ import type { IslandState } from "../src/core/state";
 
 const fresh = (seed = 3): IslandState => E.newGame({ seed });
 const rich = (st: IslandState, h = 500): IslandState => ((st.hours = h), st);
-import { cellFront, layoutIsland, TW } from "../src/render/island/layout";
+import { cellFront, layoutIsland, lotFront, TW } from "../src/render/island/layout";
 import { pickAt as pick } from "../src/render/island/pick";
 
 describe("pickAt", () => {
@@ -15,7 +15,7 @@ describe("pickAt", () => {
     E.build(st, lot, "field");
     const layout = layoutIsland(st);
     const [i, j] = lot.split(",").map(Number);
-    const f = cellFront(i, j);
+    const f = lotFront(i, j);
     expect(pick(f.x, f.y - 8, st, layout)).toBe(lot);
   });
 
@@ -33,5 +33,27 @@ describe("pickAt", () => {
     const t = layout.tent;
     expect(pick(t.x + TW, t.y, st, layout)).not.toBe("tent");
     expect(pick(t.x, t.y - 8, st, layout)).toBe("tent");
+  });
+});
+
+describe("pickAt: streets and landmarks", () => {
+  it("a street between blocks picks nothing; a lot beside it still picks the lot", () => {
+    const st = rich(fresh(), 500);
+    const layout = layoutIsland(st);
+    const s = cellFront(2, 4); // street line i = 2
+    expect(pick(s.x, s.y - 16, st, layout)).toBeNull();
+    const lot = "2,-2";
+    const f = lotFront(2, -2);
+    expect(pick(f.x, f.y - 16, st, layout)).toBe(lot);
+  });
+  it("a landmark answers with land:<id> on its body and its ground, from its tier on", () => {
+    const st = rich(fresh(), 500);
+    st.tier = 2;
+    const layout = layoutIsland(st);
+    const clock = layout.landmarks.find((l) => l.id === "clock")!;
+    expect(pick(clock.x, clock.y - 60, st, layout)).toBe("land:clock");
+    expect(pick(clock.x, clock.y - 16, st, layout)).toBe("land:clock");
+    const t1 = fresh();
+    expect(layoutIsland(t1).landmarks).toHaveLength(0);
   });
 });

@@ -11,6 +11,7 @@ import {
   PEOPLE_DEF, PEOPLE_INC, RAID_K, SEASON_DAYS, TECH, THREAT_EXP, TIERS, costMul, kij, lotKeys, ramp,
   stageOf, xpNeed, type BType, type TechId,
 } from "./rules";
+import { blockOf } from "./streets";
 import type { Building, Glob, IslandState } from "./state";
 
 export { dayKind } from "./rules";
@@ -74,7 +75,8 @@ export function claims(st: IslandState): { owner: Record<string, string>; size: 
         for (let c = 0; c < f; c++) {
           if (!a && !c) continue;
           const q = i - a + "," + (j - c);
-          if (st.lots[q] !== null || owner[q]) {
+          // a footprint stays inside one city block: it never reaches across a street (core/streets.ts)
+          if (st.lots[q] !== null || owner[q] || blockOf(i - a) !== blockOf(i) || blockOf(j - c) !== blockOf(j)) {
             ok = false;
             break;
           }

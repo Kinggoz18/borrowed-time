@@ -17,9 +17,10 @@ import { coastFor } from "./coast";
 import { defaultZoom, MIN_LOT_PX } from "./framing";
 import { arrowCount, monsterFrame, monsterHeight, monsterPose, monsterSize, type MonsterPose } from "./monster";
 import type { Era } from "../../art/island/palette";
-import { cellAt, cellFront, depth, eraOf, layoutIsland, lotCornerKeys, radius, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
+import { cellFront, depth, eraOf, ISLAND_R, layoutIsland, lotAt, lotCornerKeys, lotFront, radius, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
 import { pickAt } from "./pick";
 import { toTextures, type IslandTextures } from "./textures";
+import { physRadius } from "../../core/streets";
 import { assignWalkers, blockedLots, facingOf, lotCentre, pathWorld, roadLots, route } from "./walkers";
 
 interface Walker {
@@ -149,6 +150,7 @@ export class IslandView {
   private night = false;
   onTapLot: (key: string) => void = () => undefined;
   onTapTent: () => void = () => undefined;
+  onTapLandmark: (id: string) => void = () => undefined;
   /** Fired once the clash outcome is on screen, before damage or seizure visuals. */
   onBattleResolved: ((res: RaidResult) => void) | null = null;
 
@@ -265,7 +267,9 @@ export class IslandView {
       this.shore.removeChildren().forEach((c) => c.destroy());
       this.addAll(this.ground, this.layout.ground);
       this.addAll(this.shore, this.layout.shore);
-      this.drawSea(st);
+      // the island and its sea never change at tier-up: only the first layout (or a new era's atlas) draws the sea
+      if (this.sea.children.length === 0) this.drawSea(st);
+      else this.scatterTufts(st);
     }
     // ground variant changes (grey land) without rebuilding: swap textures
     const gs = this.ground.children as Sprite[];
@@ -297,7 +301,7 @@ export class IslandView {
     this.meshes = this.meshes.filter((m) => !m.mesh.destroyed);
     this.syncWalkers(st);
     this.syncFx();
-    if (prevR !== this.layout.r) this.fit(true);
+    if (prevR !== this.layout.r) this.fit(true, prevR !== undefined);
   }
 
   /** High: a 2x6 plane over the model; the rows near the roof shift by whole art pixels (see stepWorldFx). */
@@ -354,15 +358,17 @@ export class IslandView {
   }
 
   /** Grass tufts on the open meadow, placed once per layout by cell hash (never on lots, ring, gate or tent). */
-  private scatterTufts(st: IslandState): void {
-    const r = this.layout.r;
-    const coast = coastFor(r);
+  private scatterTufts(_st: IslandState): void {
+    const r = physRadius(this.layout.r);
+    this.tufts.forEach((t) => t.sp.destroy());
+    this.tufts = [];
+    const coast = coastFor(ISLAND_R);
     const cand: { i: number; j: number; h: number }[] = [];
     for (const { i, j } of coast.cells) {
       const m = Math.max(Math.abs(i), Math.abs(j));
-      if (m < r + 2 || `${i},${j}` in st.lots) continue;
+      if (m < r + 3) continue;
       if (Math.abs(i - (r + 2)) <= 1 && Math.abs(j - (-r + 1)) <= 1) continue; // tent
-      if (j === 0 && i >= r + 1) continue; // gate and road
+      if (j === 2 && i >= r + 1) continue; // gate and road
       if (coast.sandy(i, j)) continue;
       cand.push({ i, j, h: ((i * 73856093) ^ (j * 19349663)) >>> 0 });
     }
@@ -421,8 +427,8 @@ export class IslandView {
   }
 
   private nearLot(w: Walker): string {
-    const c = cellAt(w.x, w.y + TH / 2);
-    const k = `${c.i},${c.j}`;
+    const c = lotAt(w.x, w.y + TH / 2);
+    const k = c ? `${c.i},${c.j}` : "";
     return this.lastSt && k in this.lastSt.lots ? k : w.home;
   }
 
@@ -433,7 +439,7 @@ export class IslandView {
   }
 
   // ---------- camera ----------
-  fit(reset: boolean): void {
+  fit(reset: boolean, ease = false): void {
     const b = this.layout?.fitBounds;
     if (!b) return;
     const pb = this.layout.playBounds;
@@ -443,9 +449,19 @@ export class IslandView {
     if (reset || !this.userCam || this.rawZoom < this.fitZoom) {
       this.userCam = false;
       // Play starts zoomed in so buildings and people read; pinch out to see the whole island and its sea.
-      this.rawZoom = defaultZoom({ ringFit: this.ringFit, fitZoom: this.fitZoom, per: this.app.renderer.resolution * this.art.u });
-      this.cx = pb.x + pb.w / 2;
-      this.cy = pb.y + pb.h / 2;
+      const z = defaultZoom({ ringFit: this.ringFit, fitZoom: this.fitZoom, per: this.app.renderer.resolution * this.art.u });
+      const x = pb.x + pb.w / 2, y = pb.y + pb.h / 2;
+      if (ease) {
+        // the island is fixed, only the ring grew: glide out to the new ring instead of cutting
+        this.zoomGlide = Math.max(this.fitZoom, z);
+        this.glide = { x, y };
+      } else {
+        this.rawZoom = z;
+        this.cx = x;
+        this.cy = y;
+        this.zoomGlide = null;
+        this.glide = null;
+      }
     }
     this.apply();
   }
@@ -466,6 +482,7 @@ export class IslandView {
     return { x: 0, y: hudTop, w: Math.max(1, width - railRight), h: Math.max(1, height - hudTop - barBottom) };
   }
   private glide: { x: number; y: number } | null = null;
+  private zoomGlide: number | null = null;
   /** Glide the camera to a lot if it is off screen or under the HUD/rail (a new building is always seen). */
   reveal(key: string): void {
     const p = this.lotToScreen(key);
@@ -473,14 +490,14 @@ export class IslandView {
     const m = 48;
     if (p.x > a.x + m && p.x < a.x + a.w - m && p.y > a.y + m && p.y < a.y + a.h - m) return;
     const [i, j] = kij(key);
-    const f = cellFront(i, j);
+    const f = lotFront(i, j);
     this.userCam = true;
     this.glide = { x: f.x, y: f.y - TH / 2 };
   }
   /** Glide so a lot sits in the middle of the island still visible left of a side sheet `cover` px wide. */
   focusLot(key: string, cover: number): void {
     const [i, j] = kij(key);
-    const f = cellFront(i, j);
+    const f = lotFront(i, j);
     const a = this.area();
     const want = (this.app.screen.width - cover) / 2;
     this.userCam = true;
@@ -499,7 +516,7 @@ export class IslandView {
     this.glide = null;
     this.userCam = true;
     const [i, j] = kij(key);
-    const p = cellFront(i, j);
+    const p = lotFront(i, j);
     this.cx = p.x;
     this.cy = p.y - TH / 2;
     this.apply();
@@ -540,6 +557,7 @@ export class IslandView {
   private glintShift = 0;
   zoomAt(sx: number, sy: number, k: number, fromDrawn = false): void {
     this.userCam = true;
+    this.zoomGlide = null;
     const wx = (sx - this.world.x) / this.zoom, wy = (sy - this.world.y) / this.zoom;
     this.rawZoom = (fromDrawn ? this.zoom : this.rawZoom) * k;
     this.apply();
@@ -575,6 +593,7 @@ export class IslandView {
     if (Math.hypot(dx, dy) > 8) d.moved = true;
     if (d.moved) {
       this.userCam = true;
+      this.zoomGlide = null;
       this.cx = d.cx - dx / this.zoom;
       this.cy = d.cy - dy / this.zoom;
       this.apply();
@@ -600,6 +619,7 @@ export class IslandView {
   tap(sx: number, sy: number): void {
     const key = this.pick(sx, sy);
     if (key === "tent") return this.onTapTent();
+    if (key?.startsWith("land:")) return this.onTapLandmark(key.slice(5));
     if (this.lotScreenWidth() < 34) {
       // too small to aim at: zoom toward the tap first (FINAL_PLAN_BT.md §6 tap-to-zoom)
       this.zoomAt(sx, sy, 48 / this.lotScreenWidth(), true);
@@ -610,11 +630,12 @@ export class IslandView {
   /** Screen position (CSS px) of a lot's centre, for tests and UI anchoring. */
   lotToScreen(key: string): { x: number; y: number } {
     const [i, j] = kij(key);
-    const p = cellFront(i, j);
+    const p = lotFront(i, j);
     return { x: this.world.x + p.x * this.zoom, y: this.world.y + (p.y - TH / 2) * this.zoom };
   }
   zoomToLots(): void {
     this.userCam = true;
+    this.zoomGlide = null;
     this.rawZoom = Math.max(this.zoom, 56 / TW);
     this.apply();
   }
@@ -641,11 +662,11 @@ export class IslandView {
     if (!lots) return;
     for (const k of lotCornerKeys(lots, key, this.buildOpen)) {
       const [i, j] = kij(k);
-      paintLotCorners(this.select, cellFront(i, j), k === key);
+      paintLotCorners(this.select, lotFront(i, j), k === key);
     }
     if (key && key in lots) {
       const [i, j] = kij(key);
-      const f = cellFront(i, j);
+      const f = lotFront(i, j);
       this.select.poly([f.x, f.y - TH, f.x + TW / 2, f.y - TH / 2, f.x, f.y, f.x - TW / 2, f.y - TH / 2]).stroke({ width: 3, color: 0xd9a441, alpha: 1 });
     }
   }
@@ -671,8 +692,13 @@ export class IslandView {
       }
     }
     if (this.frozen || !this.layout) return;
+    if (this.zoomGlide !== null && !this.dragFrom) {
+      this.rawZoom += (this.zoomGlide - this.rawZoom) * Math.min(1, dt * 2.2);
+      if (Math.abs(this.zoomGlide - this.rawZoom) < 0.002) (this.rawZoom = this.zoomGlide), (this.zoomGlide = null);
+      this.apply();
+    }
     if (this.glide && !this.dragFrom) {
-      const k = Math.min(1, dt * 6);
+      const k = Math.min(1, dt * (this.zoomGlide !== null ? 2.2 : 6));
       const px = this.cx, py = this.cy;
       this.cx += (this.glide.x - this.cx) * k;
       this.cy += (this.glide.y - this.cy) * k;
@@ -1151,7 +1177,7 @@ export class IslandView {
             for (const dmg of res.damaged.slice(0, 6)) {
               if (dmg.k === "pal") continue;
               const [i, j] = kij(dmg.k);
-              const p = cellFront(i, j);
+              const p = lotFront(i, j);
               fires.push(this.fx("fx/fire", p.x, p.y - 24), this.fx("fx/smoke", p.x + 4, p.y - 44));
             }
             await wait(beat.dur, (u) => {
@@ -1290,7 +1316,7 @@ export class IslandView {
   async playSeizure(key: string): Promise<void> {
     const sp = [...this.sprites.entries()].find(([id]) => id.startsWith(key + "@"))?.[1];
     const [i, j] = kij(key);
-    const p = cellFront(i, j);
+    const p = lotFront(i, j);
     const dust = this.fx("fx/dust", p.x, p.y - 10);
     const y0 = sp?.y ?? p.y;
     await new Promise<void>((done) =>
@@ -1320,7 +1346,7 @@ export class IslandView {
   /** A short puff where something was built. */
   puff(key: string): void {
     const [i, j] = kij(key);
-    const p = cellFront(i, j);
+    const p = lotFront(i, j);
     const d = this.fx("fx/dust", p.x, p.y - 8);
     this.tween(0.7, (u) => ((d.alpha = 1 - u), d.scale.set(0.6 + u)), () => d.destroy());
   }

@@ -91,10 +91,14 @@ describe("building", () => {
     st.tier = 3;
     st.L = 20;
     for (const k of lotKeys(3)) if (!(k in st.lots)) st.lots[k] = null;
+    // block 5..7: a 2x2 fits inside it; (5,5) would reach back across the street into block 2..4 and does not
+    st.lots["6,6"] = { type: "workshop", n: 12, inv: 1 };
+    expect(E.claims(st).size["6,6"]).toBe(2);
+    expect(E.claims(st).owner["5,5"]).toBe("6,6");
+    st.lots["5,6"] = { type: "field", n: 0, inv: 1 };
+    expect(E.claims(st).size["6,6"]).toBeUndefined();
+    st.lots["6,6"] = null;
     st.lots["5,5"] = { type: "workshop", n: 12, inv: 1 };
-    expect(E.claims(st).size["5,5"]).toBe(2);
-    expect(E.claims(st).owner["4,4"]).toBe("5,5");
-    st.lots["4,5"] = { type: "field", n: 0, inv: 1 };
     expect(E.claims(st).size["5,5"]).toBeUndefined();
   });
   it("XP: build +2, upgrade 1 + look stage, levels up", () => {

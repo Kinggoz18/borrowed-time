@@ -69,6 +69,7 @@ export class GameUI {
     host.appendChild(h("div", { class: "rotate", role: "alert" }, icon("rotate"), h("p", {}, "Turn your phone sideways to play.")));
     d.view.onTapLot = (k) => this.tapLot(k);
     d.view.onTapTent = () => this.openClockkeeper();
+    d.view.onTapLandmark = (id) => this.showPlaque(id);
   }
 
   private cue(c: Cue, buzz?: "light" | "medium" | "heavy"): void {
@@ -325,6 +326,16 @@ export class GameUI {
     while (this.toasts.children.length > 2) this.toasts.firstElementChild!.remove();
     setTimeout(() => t.classList.add("out"), 3600);
     setTimeout(() => t.remove(), 4000);
+  }
+  /** A landmark's plaque: its name and one line of the colony's lore. Cosmetic, no mechanics. */
+  showPlaque(id: string): void {
+    const lm = this.d.view.playLayout?.landmarks.find((l) => l.id === id);
+    if (!lm) return;
+    const t = h("div", { class: "toast plaque", role: "status", "data-plaque": id }, h("b", {}, lm.name), h("span", {}, lm.plaque));
+    this.toasts.appendChild(t);
+    while (this.toasts.children.length > 2) this.toasts.firstElementChild!.remove();
+    setTimeout(() => t.classList.add("out"), 7600);
+    setTimeout(() => t.remove(), 8000);
   }
   private seasonToast(): void {
     const st = this.session!.state;

@@ -143,6 +143,9 @@ button { font: inherit; color: inherit; }
 .toast.warn { background: var(--debt-bg); }
 .toast.good { background: #f6e4b4; font-weight: 700; }
 .toast.out { opacity: 0; }
+.toast.plaque { display: grid; gap: 2px; background: #f3e7c6; border-color: var(--ink); box-shadow: 0 3px 0 var(--ink), inset 0 0 0 2px #bfa06a; font-size: 14px; line-height: 1.35; }
+.toast.plaque b { font-size: 15px; }
+.toast.plaque span { font-style: italic; }
 
 /* sheets and cards */
 .layer { position: absolute; inset: 0; pointer-events: none; }
