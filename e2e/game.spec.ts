@@ -142,7 +142,7 @@ test("the arc: empty land to Village", async ({ page }) => {
   await act(page, "close").click();
 
   // Hesper: borrow shows today/tomorrow daylight; repay
-  await act(page, "keeper").click();
+  await page.locator('[data-hud="debt"]').click(); // Hesper: the Owed chip works on every layout
   await expect(page.locator(".sheet.keeper")).toBeVisible();
   await shot(page, "07-hesper");
   await act(page, "repay-all").click();
@@ -174,7 +174,9 @@ test("the arc: empty land to Village", async ({ page }) => {
   }
   await act(page, "debug").click();
   await act(page, "close").click();
-  await page.locator('[data-hud="charter"]').click();
+  // the Charter lives under Profile (the phone HUD has no Charter chip)
+  await act(page, "profile").click();
+  await act(page, "open-charter").click();
   await expect(page.locator(".sheet")).toContainText("Village Charter");
   await expect(page.locator(".sheet [data-req]")).toHaveCount(4);
   await act(page, "close").click();
@@ -189,7 +191,7 @@ test("the arc: empty land to Village", async ({ page }) => {
   await dev(page, "dev-debt");
   s = await st(page);
   expect(s.L).toBeGreaterThanOrEqual(3);
-  await act(page, "keeper").click();
+  await page.locator('[data-hud="debt"]').click(); // Hesper: the Owed chip works on every layout
   await act(page, "close").click();
   // sleep until the morning check passes (people stay only if fed and housed)
   for (let i = 0; i < 24 && (await st(page)).tier === 0; i++) {
@@ -228,7 +230,7 @@ test("the arc: empty land to Village", async ({ page }) => {
   await act(page, "build").click();
   await act(page, "build-workshop").click();
   await expect(page.locator(".sheet")).toHaveCount(0);
-  await act(page, "keeper").click();
+  await page.locator('[data-hud="debt"]').click(); // Hesper: the Owed chip works on every layout
   const max = page.locator('[data-act^="borrow-"]').last();
   await max.click();
   await act(page, "close").click();
@@ -325,7 +327,7 @@ test("tap targets are at least 44 px and nothing overlaps the HUD", async ({ pag
   );
   expect(small).toEqual([]);
   const overlap = await page.evaluate(() => {
-    const sels = ['[data-hud="hours"]', '[data-hud="debt"]', ".timebox", '[data-hud="charter"]', ".pause-btn", ".colony-badge", ".bar"];
+    const sels = ['[data-hud="hours"]', '[data-hud="debt"]', ".timebox", ".pause-btn", ".colony-badge", ".bar"];
     const rs = sels.map((s) => [s, document.querySelector(s)!.getBoundingClientRect()] as const);
     const hit = (p: DOMRect, q: DOMRect) => p.left < q.right && q.left < p.right && p.top < q.bottom && q.top < p.bottom;
     const out: string[] = [];
@@ -357,7 +359,7 @@ test("keyboard: B, H, J and P open their sheets, Escape closes, Space rests; the
   await page.keyboard.press("Space");
   await expect(act(page, "rest")).toHaveAttribute("aria-pressed", "false");
   // the first borrow is the first page of the Journal
-  await act(page, "journal").click();
+  await page.keyboard.press("j");
   await expect(page.locator(".sheet .j-entry").first()).toContainText("Borrowed");
   await expect(page.locator(".sheet .j-chapter").first()).toContainText("Wreck & Frontier");
   await act(page, "close").click();

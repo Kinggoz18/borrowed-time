@@ -408,3 +408,53 @@ h3.sec .ico{width:1.25rem;height:1.25rem}
 }
 .req b{display:flex;align-items:center;gap:6px}
 .req b .ico{width:1.125rem;height:1.125rem}
+
+/* ---------- phones: a calm HUD (portrait and landscape). The laptop layout above is untouched. ----------
+   Six things: badge, day, Hours/Owed, Pause, Build, Rest; all one height. The Charter lives under Profile,
+   Hesper and Journal under Pause (and Hesper on the Owed chip). */
+@media not all and (min-width:1100px) and (min-height:640px) and (orientation:landscape){
+  :root{--blk:48px}
+  .goal{display:none}
+  .tab[data-act=keeper],.tab[data-act=journal]{display:none}
+  .colony-badge,.timebox,.res{height:var(--blk);min-height:var(--blk);box-sizing:border-box}
+  .pause-btn{width:var(--blk);height:var(--blk)}
+  .colony-badge{gap:6px;padding:0 6px 0 2px}
+  .level-ring{width:1.75rem;height:1.75rem;font-size:var(--t-sm)}
+  .colony-text b{font-size:var(--t-sm);max-width:7rem}
+  .timebox{padding:0 6px;gap:2px;min-width:0}
+  .tb-top{font-size:var(--t-sm);line-height:1.1}
+  .lightbar i{height:.5rem}
+  .res{align-items:stretch}
+  .res .chip{padding:0 6px;min-height:0;gap:4px;margin-block:-4px}
+  .chip b{font-size:var(--t-body)}
+  .chip .ico{width:1.25rem;height:1.25rem}
+  .chip.debt{padding-bottom:6px}
+  .chip.debt .m{height:4px;left:6px;right:6px;bottom:1px}
+  .tab{min-height:48px;padding:2px}
+  .tab .ico{width:1.25rem;height:1.25rem}
+  .card-wrap{padding:calc(var(--hud-h,0px) + 6px) calc(var(--rail-w,0px) + 12px) calc(var(--bar-top,0px) + 6px)}
+  .card{max-height:100%}
+}
+@media (orientation:landscape) and not all and (min-width:1100px) and (min-height:640px){
+  .bar{width:4rem;gap:6px}
+  .tab{width:100%}
+}
+@media (orientation:portrait){
+  .hud-inner{gap:6px;row-gap:6px}
+  .hud-inner{flex-wrap:wrap}
+  .colony-badge{flex:1 1 calc(100% - var(--blk) - 6px);order:1}
+  .pause-btn{order:2;flex:none}
+  .timebox{order:3;flex:1 1 38%;grid-template-columns:1fr;grid-template-rows:auto auto;gap:2px 0;align-items:center;padding:0 6px}
+  .res{order:4;flex:1.3 1 54%}
+  .tb-top{grid-column:1}
+  .tb-bar{grid-column:1}
+  .tb-left,.tb-top .tag-ev{display:none}
+  .bar{left:50%;right:auto;transform:translateX(-50%);width:auto;grid-template-columns:repeat(2,minmax(0,8.5rem));gap:12px;bottom:calc(var(--safe-bottom) + 8px)}
+  .tab{flex-direction:row;gap:8px;font-size:var(--t-sm)}
+}
+
+/* Profile: the Charter entry and Hesper link */
+.charter-entry{display:flex;align-items:center;gap:10px;width:100%;min-height:var(--tap);padding:6px 12px;text-align:left}
+.charter-entry .t{display:grid;line-height:1.15;flex:1}
+.charter-entry .t b{font-size:var(--t-body);font-weight:800}
+.charter-entry .t small{font-size:var(--t-sm);font-weight:700;color:var(--ink-dim)}

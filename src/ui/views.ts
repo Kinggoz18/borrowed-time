@@ -10,6 +10,7 @@ import { h, icon, ICON, type Child } from "./dom";
 import { J_EMPTY, J_ERROR, J_FILTERS, J_NONE } from "./journalCopy";
 import { chaptered, ariaFor, journalEntries, PAGE, type JEntry, type JFilter } from "./journalModel";
 import { ledgerRows, profileColony, profileIsland } from "./profileModel";
+import { goalModel } from "./hudModel";
 import { bar2, tabs, tag, type Tone } from "./widgets";
 
 type Ic = keyof typeof ICON;
@@ -39,7 +40,18 @@ function paneSwitch(root: HTMLElement, g: string, v: string): void {
 }
 
 // ---------- Profile ----------
-export function profileView(c: Ctx, offered: readonly BType[], meta: { colonyName: string }): Child[] {
+/** "Village Charter, 2 of 4 ready": the way to the Charter from Profile (the phone HUD has no Charter chip). Null in the last era. */
+function charterEntry(c: Ctx, open?: () => void): HTMLElement | null {
+  const g = goalModel(c.st);
+  if (!g || !open) return null;
+  return h(
+    "button",
+    { class: "btn charter-entry" + (g.ready ? " primary" : ""), type: "button", "data-act": "open-charter", "aria-label": g.label, onclick: open },
+    icon("star"),
+    h("span", { class: "t" }, h("b", {}, g.name), h("small", {}, g.line)),
+  );
+}
+export function profileView(c: Ctx, offered: readonly BType[], meta: { colonyName: string; onCharter?: () => void }): Child[] {
   const st = c.st;
   const col = profileColony(st);
   const isl = profileIsland(st, offered);
@@ -55,6 +67,7 @@ export function profileView(c: Ctx, offered: readonly BType[], meta: { colonyNam
       h("p", { class: "sub" }, col.kicker),
       h("div", { class: "xp" }, h("div", { class: "num", style: "font-weight:800;font-size:var(--t-sm)" }, col.toNext), h("div", { class: "xpbar", role: "progressbar", "aria-valuenow": String(Math.floor(col.xpNow)), "aria-valuemin": "0", "aria-valuemax": String(col.xpMax), "aria-label": `Progress to Level ${col.level + 1}` }, h("i", { style: `width:${Math.round(col.xpPct * 100)}%` }))),
     ),
+    charterEntry(c, meta.onCharter),
     h("div", { class: "stats" }, ...col.stats.map((s) => h("div", { class: "stat" }, h("b", {}, String(s.n)), h("span", {}, s.label)))),
     h(
       "div",
@@ -81,6 +94,7 @@ export function profileView(c: Ctx, offered: readonly BType[], meta: { colonyNam
     h("h3", { class: "sec" }, icon("owed"), "Hesper's ledger"),
     h("ul", { class: "ledger-l" }, ...led.map((r) => h("li", { class: r.bad ? "bad" : "" }, icon(r.bad ? "owed" : r.label.startsWith("Nights") || r.label.startsWith("Long") ? "shield" : "hours"), r.label, h("span", { class: "dots" }), h("b", {}, String(r.n))))),
   );
+  ledger.append(h("button", { class: "btn", type: "button", "data-act": "visit-hesper", style: "margin-top:12px", onclick: c.hesper }, icon("tent"), "Visit Hesper"));
   const root = h("div", { class: "sb" }, h("div", { class: "profile" }, colony, h("div", { class: "tabcol" }, island, ledger)));
   const show = (id: string): void => paneSwitch(root, "profile", id);
   const strip = tabs("Profile", [{ id: "colony", label: "Colony", cls: "only-small", ic: "profile" }, { id: "island", label: "Island", ic: "home" }, { id: "ledger", label: "Ledger", ic: "journal" }], isWide() ? "island" : "colony", show);
