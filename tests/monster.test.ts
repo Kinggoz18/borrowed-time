@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { battleTimeline } from "../src/render/island/battle";
-import { arrowCount, MONSTER_FRAMES, monsterFrame, monsterPose, monsterSize } from "../src/render/island/monster";
+import { arrowCount, MONSTER_ART_H, MONSTER_ART_W, MONSTER_BASE, MONSTER_FRAMES, MONSTER_SPAN, monsterDread, monsterEyes, monsterFrame, monsterHeight, monsterPose, monsterScale, monsterSize, monsterWidth } from "../src/render/island/monster";
+import * as E from "../src/core/engine";
+import { layoutIsland } from "../src/render/island/layout";
 import { readFileSync } from "node:fs";
 
 describe("the Long Dusk shadow", () => {
@@ -50,5 +52,54 @@ describe("the Long Dusk shadow", () => {
       for (let si = 0; si < 3; si++) for (let f = 0; f < MONSTER_FRAMES; f++) expect(names).toContain(`fx/monster/${si}/${f}`);
       expect(names).toContain("fx/arrow");
     }
+  });
+
+  it("is sized by the island: the medium shadow spans over half its width and stands taller than the ring", () => {
+    const W = 1984; // a fixed island, tier after tier
+    for (const unit of [1, 0.5, 2]) {
+      const k = monsterScale(W, unit);
+      expect(Number.isInteger(k)).toBe(true);
+      const w = monsterWidth(1, k, unit);
+      expect(w).toBeGreaterThan(W * 0.45);
+      expect(w).toBeLessThan(W * MONSTER_SPAN * 1.2);
+      expect(monsterWidth(0, k, unit)).toBeLessThan(w);
+      expect(monsterWidth(2, k, unit)).toBeGreaterThan(w);
+      expect(monsterWidth(2, k, unit)).toBeLessThan(W);
+    }
+    // a bigger island makes a bigger shadow; the shadow never drops below a visible magnification
+    expect(monsterScale(3000, 1)).toBeGreaterThan(monsterScale(1500, 1));
+    expect(monsterScale(10, 1)).toBeGreaterThanOrEqual(2);
+    expect(monsterHeight(1, 1, 6)).toBe(MONSTER_ART_H[1] * 6);
+    expect(MONSTER_ART_W[1]).toBe(190);
+    expect(MONSTER_BASE).toBeGreaterThan(0);
+  });
+  it("towers over the real island and its ring at every age", () => {
+    const k = monsterScale(1984, 1);
+    for (const tier of [0, 1, 2, 3]) {
+      const st = E.newGame({ seed: 1 });
+      st.tier = tier;
+      st.pal = { n: 0, inv: 1 };
+      const lay = layoutIsland(st);
+      const k2 = monsterScale(lay.bounds.w, 1);
+      expect(k2).toBeGreaterThanOrEqual(2);
+      // the shadow stands taller than the whole ring at any age, and spans about half the island
+      expect(monsterHeight(1, 1, k2)).toBeGreaterThan(lay.playBounds.h);
+      expect(monsterWidth(1, k2, 1)).toBeGreaterThan(lay.bounds.w * 0.45);
+    }
+    expect(k).toBeGreaterThan(2);
+  });
+  it("shows its eyes before its body, and darkens the screen as it stands", () => {
+    const early = monsterPose("approach", 0.2, true);
+    expect(early.rise).toBe(0);
+    expect(early.eyes).toBeGreaterThan(0.5);
+    expect(monsterPose("approach", 0, true).eyes).toBe(0);
+    expect(monsterPose("defend", 0.5, true).eyes).toBe(1);
+    expect(monsterDread(monsterPose("approach", 0, true))).toBe(0);
+    expect(monsterDread(monsterPose("defend", 0.5, true))).toBeGreaterThan(0.95);
+    expect(monsterDread(monsterPose("aftermath", 1, true))).toBe(0);
+    expect(monsterDread(monsterPose("aftermath", 1, false))).toBe(0);
+    const eye = monsterEyes(1);
+    expect(eye.dy).toBeLessThan(-100);
+    expect(eye.dx).toBeCloseTo(8.5, 5);
   });
 });

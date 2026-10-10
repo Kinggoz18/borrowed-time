@@ -15,7 +15,7 @@ import { AMBIENT, crestAlpha, gullPose, gullSpecs, rng, seaState, seaStepsPerSec
 import { BATTLE_RESOLVED_EVENT, battleTimeline, type BattlePhase, boatCount, prefersReducedMotion, raiderCount } from "./battle";
 import { coastFor } from "./coast";
 import { defaultZoom, MIN_LOT_PX } from "./framing";
-import { arrowCount, monsterFrame, monsterHeight, monsterPose, monsterSize, type MonsterPose } from "./monster";
+import { arrowCount, MONSTER_ART_W, MONSTER_BASE, monsterDread, monsterEyes, monsterFrame, monsterHeight, monsterPose, monsterScale, monsterSize, monsterWidth, type MonsterPose } from "./monster";
 import type { Era } from "../../art/island/palette";
 import { cellAt, cellFront, depth, eraOf, ISLAND_R, layoutIsland, lotAt, lotCornerKeys, lotFront, radius, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
 import { pickAt } from "./pick";
@@ -80,7 +80,6 @@ interface Puff {
 }
 
 /** How far below the island's back corner the shadow's waterline sits (world units): it looms behind the land, which hides its hem. */
-const SHADOW_BASE = 44;
 
 export class IslandView {
   readonly world = new Container();
@@ -735,8 +734,10 @@ export class IslandView {
     return this.tweens.length > 0;
   }
   frozen = false;
+  /** Stops time dead for a moment (the tweens and the clock), so a test can photograph one beat of a battle. */
+  hold = false;
   private update(dt: number): void {
-    dt = Math.min(dt, 0.1);
+    dt = this.hold ? 0 : Math.min(dt, 0.1);
     // tweens keep running while paused so dusk battle and seizure can play
     for (const tw of this.tweens.slice()) {
       tw.t += dt;
@@ -1146,7 +1147,7 @@ export class IslandView {
       if (id.includes("tower") || id.includes("watch")) towers.push(sp);
     }
     const shadow = res.boss && this.art.has("fx/monster/0/0") ? this.spawnMonster(res.S) : null;
-    const restoreCam = shadow ? this.frameShadow(shadow.height) : null;
+    const restoreCam = shadow ? this.frameShadow(shadow.height, shadow.width, shadow.baseY) : null;
     const arrows: Sprite[] = [];
     const towerY = towers.map((s) => s.y);
     const ringX = ring.map((s) => s.x);
@@ -1270,42 +1271,105 @@ export class IslandView {
   }
 
 
+  /** The standing shadow's box on screen (CSS px), or null when it is not up. For tests and screenshots. */
+  shadowRect(): { x: number; y: number; w: number; h: number; rise: number } | null {
+    const sp = this.shadowNow;
+    if (!sp || sp.destroyed || !sp.visible) return null;
+    const b = sp.getBounds();
+    // only what stands above the waterline is drawn (the rest is masked), so measure to there
+    const water = this.world.toGlobal({ x: 0, y: this.shadowWater }).y;
+    return { x: b.x, y: b.y, w: b.width, h: Math.max(0, Math.min(b.y + b.height, water) - b.y), rise: this.shadowRise };
+  }
+
+  private shadowNow: Sprite | null = null;
+  private shadowWater = 0;
+  private shadowRise = 0;
+
   /** The Long Dusk (day 6): a hooded shadow behind the island, sized by the raid's strength. */
   private spawnMonster(S: number): {
     height: number;
+    width: number;
+    baseY: number;
     pose: (p: MonsterPose) => void;
     volley: (arrows: Sprite[], towers: Piece[], defenders: Sprite[], u: number, count: number) => void;
     destroy: () => void;
   } {
     const size = monsterSize(S);
     const b = this.layout.bounds;
-    const u = this.art.u;
+    // world units per art pixel of the medium shadow: the atlas may be drawn at either grid, but a texture's size is always in world units
+    const u = this.art.get("fx/monster/1/0").width / MONSTER_ART_W[1];
+    // sized by the island, not the art: the medium shadow spans over half of the island's width and stands a good deal
+    // taller than the ring and its palisade (whole-number magnification keeps its art pixels square)
+    const k = monsterScale(b.w, u);
     const baseX = b.x + b.w / 2;
-    // the waterline sits just inside the back corner of the island, so the lower hem melts into the shallows
-    const baseY = b.y + SHADOW_BASE;
-    const height = monsterHeight(size, u);
+    // the waterline sits down the back corner, so the land hides the hem and the shadow rises from behind it
+    const baseY = b.y + b.h * MONSTER_BASE;
+    const height = monsterHeight(size, u, k);
+    const width = monsterWidth(size, k, u);
     const sp = new Sprite(this.art.get(`fx/monster/${size}/0`));
+    sp.scale.set(k);
+    this.shadowNow = sp;
+    this.shadowWater = baseY;
     const mask = new Graphics();
     sp.mask = mask;
-    this.sea.addChild(mask, sp);
+    // two embers for the eyes (additive circles, no filter) and the dimming of the sky and screen edges
+    const glow = new Graphics();
+    glow.blendMode = "add";
+    const eye = monsterEyes(size);
+    const fancy = this.cfg.tier !== "low";
+    this.sea.addChild(mask, sp, glow);
     let lean = 0;
+    const dread = (p: MonsterPose): void => {
+      const d = monsterDread(p);
+      const w = this.app.screen.width, h = this.app.screen.height;
+      this.wash.clear();
+      if (d < 0.01) return;
+      this.wash.rect(0, 0, w, h).fill({ color: 0x0c0916, alpha: 0.34 * d });
+      if (!fancy) return;
+      // the screen edges bleed amber, then dark: a cheap cue that something is coming (stacked bands, never a filter)
+      const pulse = 0.7 + 0.3 * Math.sin(this.clock * 3);
+      for (let n = 0; n < 4; n++) {
+        const t = Math.round(Math.min(w, h) * 0.05 * (n + 1));
+        const a = 0.24 * d * pulse * (1 - n / 4);
+        this.wash.rect(0, 0, t, h).rect(w - t, 0, t, h).rect(0, 0, w, t).rect(0, h - t, w, t).fill({ color: 0x5a1c10, alpha: a });
+      }
+    };
     const place = (p: MonsterPose): void => {
       sp.visible = p.rise > 0.01;
+      this.shadowRise = p.rise;
       sp.alpha = p.alpha;
       sp.texture = this.art.get(`fx/monster/${size}/${monsterFrame(this.clock)}`);
-      lean = p.lean * u;
+      lean = p.lean * u * k;
       sp.position.set(this.snap(baseX + lean), this.snap(baseY + (1 - p.rise) * height * 0.95));
       // everything below the waterline is hidden: it is rising out of the sea, not sliding over the island
-      mask.clear().rect(baseX - height * 2, baseY - height * 2, height * 4, height * 2 + 4).fill(0xffffff);
+      mask.clear().rect(baseX - width * 2, baseY - height * 2, width * 4, height * 2 + 4).fill(0xffffff);
+      glow.clear();
+      if (p.eyes > 0.01) {
+        // the embers sit where the art's eyes are, at the shadow's own height, pulsing in the steps of its frames
+        const pulse = 0.7 + 0.3 * Math.sin(this.clock * 6);
+        // the embers hover over the water before the body is up (never lower than a fifth of the height below its eyes), then ride its face
+        const finalY = baseY + eye.dy * u * k;
+        const ey = Math.min(sp.y + eye.dy * u * k, finalY + 0.2 * height);
+        const r = 3 * u * k * (0.6 + 0.4 * p.eyes);
+        for (const sg of [-1, 1]) {
+          const ex = sp.x + sg * eye.dx * u * k;
+          glow.circle(ex, ey, r * 3).fill({ color: 0xff8a2c, alpha: 0.07 * p.eyes * p.alpha * pulse });
+          glow.circle(ex, ey, r * 1.8).fill({ color: 0xffa83c, alpha: 0.12 * p.eyes * p.alpha * pulse });
+          glow.circle(ex, ey, r).fill({ color: 0xffd08a, alpha: 0.3 * p.eyes * p.alpha * pulse });
+        }
+      }
+      dread(p);
     };
-    place({ rise: 0, alpha: 1, lean: 0 });
+    place({ rise: 0, eyes: 0, alpha: 1, lean: 0 });
     return {
       height,
+      width,
+      baseY,
       pose: place,
       volley: (arrows, towers, defenders, k, count) => {
         const from = [...towers.map((t) => ({ x: t.x, y: t.y - 36 })), ...defenders.map((d) => ({ x: d.x, y: d.y - 14 }))];
         if (!from.length) return;
-        const target = { x: baseX + lean, y: baseY - height * 0.45 };
+        const target = { x: baseX + lean, y: baseY - height * 0.4 };
         const want = Math.floor(k * count);
         while (arrows.length < want) {
           const a = new Sprite(this.art.get("fx/arrow"));
@@ -1328,18 +1392,26 @@ export class IslandView {
       destroy: () => {
         sp.mask = null;
         mask.destroy();
+        glow.destroy();
         sp.destroy();
+        this.shadowNow = null;
+        this.wash.clear();
       },
     };
   }
 
-  /** Show the whole shadow: zoom and centre so the island, the sea behind it and the monster's head all fit. Returns the undo. */
-  private frameShadow(height: number): () => void {
+  /** Show the whole shadow: zoom and centre so the shadow from head to arm-tip and the ring below it all fit, whatever the screen. Returns the undo. */
+  private frameShadow(height: number, width: number, baseY: number): () => void {
     const saved = { cx: this.cx, cy: this.cy, raw: this.rawZoom, user: this.userCam, fit: this.fitZoom };
     const land = this.layout.bounds;
-    const top = land.y + SHADOW_BASE - height - 12;
-    // the shadow is the show: frame it and the back of the island; the near shore may fall off the bottom of the screen
-    const box = { x: land.x + land.w * 0.05, y: top, w: land.w * 0.9, h: land.y + SHADOW_BASE + land.h * 0.78 - top };
+    const play = this.layout.playBounds;
+    const top = baseY - height - 24;
+    const bottom = Math.max(play.y + play.h + 30, baseY + land.h * 0.25);
+    // framed by the shadow (arms and a margin), not by the ring: on a tall narrow screen the ring's flanks may fall off the sides
+    const half = Math.max(width * 0.56, 200);
+    // the shadow is the show: its whole height and the ring under it; the near shore may fall off the bottom of the screen
+    const cx = land.x + land.w / 2;
+    const box = { x: cx - half, y: top, w: half * 2, h: bottom - top };
     const a = this.area();
     const z = Math.min(a.w / box.w, a.h / box.h);
     const per = this.app.renderer.resolution * this.art.u;

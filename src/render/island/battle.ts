@@ -24,7 +24,7 @@ export function prefersReducedMotion(): boolean {
 export function battleTimeline(res: { won: boolean; boss?: boolean }, reduced: boolean): BattleBeat[] {
   const d = (full: number): number => (reduced ? Math.min(0.08, full * 0.05) : full);
   return [
-    { phase: "approach", dur: d(res.boss ? 2 : 1.7) },
+    { phase: "approach", dur: d(res.boss ? 3.4 : 1.7) },
     { phase: "defend", dur: d(0.8) },
     { phase: "clash", dur: d(1.4) },
     { phase: "outcome", dur: d(1) },

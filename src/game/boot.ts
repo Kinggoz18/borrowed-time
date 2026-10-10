@@ -31,6 +31,10 @@ export interface GameHooks {
   showLot: (key: string) => void;
   /** Plays a dusk battle from an already-rolled result (tests and screenshots). */
   playRaid: (res: RaidResult) => Promise<void>;
+  /** The Long Dusk shadow's on-screen box while it stands (tests and screenshots). */
+  shadowRect: () => { x: number; y: number; w: number; h: number; rise: number } | null;
+  /** Stops or restarts time inside the island view, to photograph one beat of a battle (tests). */
+  hold: (on: boolean) => void;
   fps: () => number;
   /** Which music track is playing (day or night), for the e2e tests. */
   music: () => { running: boolean; current: string | null };
@@ -135,6 +139,8 @@ export async function bootGame(): Promise<void> {
     showLandmark: (id) => view.showLandmark(id),
     showLot: (k) => view.showLot(k),
     playRaid: (res) => view.playRaid(res),
+    shadowRect: () => view.shadowRect(),
+    hold: (on) => void (view.hold = on),
     fps: () => Math.round(fps),
     music: () => ({ running: sfx.music.running, current: sfx.music.current }),
     setLight: (u, night) => view.setLight(u, night),
