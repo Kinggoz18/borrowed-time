@@ -17,7 +17,7 @@ import { coastFor } from "./coast";
 import { defaultZoom, MIN_LOT_PX } from "./framing";
 import { arrowCount, monsterFrame, monsterHeight, monsterPose, monsterSize, type MonsterPose } from "./monster";
 import type { Era } from "../../art/island/palette";
-import { cellFront, depth, eraOf, ISLAND_R, layoutIsland, lotAt, lotCornerKeys, lotFront, radius, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
+import { cellAt, cellFront, depth, eraOf, ISLAND_R, layoutIsland, lotAt, lotCornerKeys, lotFront, radius, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
 import { pickAt } from "./pick";
 import { toTextures, type IslandTextures } from "./textures";
 import { physRadius } from "../../core/streets";
@@ -149,6 +149,8 @@ export class IslandView {
   private light = 0.2;
   private night = false;
   onTapLot: (key: string) => void = () => undefined;
+  /** a highlighted spot was tapped while choosing where a landmark or a moved building goes */
+  onTapTarget: (spot: string) => void = () => undefined;
   onTapTent: () => void = () => undefined;
   onTapLandmark: (id: string) => void = () => undefined;
   /** Fired once the clash outcome is on screen, before damage or seizure visuals. */
@@ -481,6 +483,15 @@ export class IslandView {
     const { width, height } = this.app.screen;
     return { x: 0, y: hudTop, w: Math.max(1, width - railRight), h: Math.max(1, height - hudTop - barBottom) };
   }
+  /** Where a lot key or plaza tile "p:I,J" stands (bottom point of its cell). */
+  private spotFront(key: string): { x: number; y: number } {
+    if (key.startsWith("p:")) {
+      const [I, J] = key.slice(2).split(",").map(Number);
+      return cellFront(I, J);
+    }
+    const [i, j] = kij(key);
+    return lotFront(i, j);
+  }
   private glide: { x: number; y: number } | null = null;
   private zoomGlide: number | null = null;
   /** Glide the camera to a lot if it is off screen or under the HUD/rail (a new building is always seen). */
@@ -489,15 +500,13 @@ export class IslandView {
     const a = this.area();
     const m = 48;
     if (p.x > a.x + m && p.x < a.x + a.w - m && p.y > a.y + m && p.y < a.y + a.h - m) return;
-    const [i, j] = kij(key);
-    const f = lotFront(i, j);
+    const f = this.spotFront(key);
     this.userCam = true;
     this.glide = { x: f.x, y: f.y - TH / 2 };
   }
   /** Glide so a lot sits in the middle of the island still visible left of a side sheet `cover` px wide. */
   focusLot(key: string, cover: number): void {
-    const [i, j] = kij(key);
-    const f = lotFront(i, j);
+    const f = this.spotFront(key);
     const a = this.area();
     const want = (this.app.screen.width - cover) / 2;
     this.userCam = true;
@@ -515,8 +524,7 @@ export class IslandView {
   showLot(key: string): void {
     this.glide = null;
     this.userCam = true;
-    const [i, j] = kij(key);
-    const p = lotFront(i, j);
+    const p = this.spotFront(key);
     this.cx = p.x;
     this.cy = p.y - TH / 2;
     this.apply();
@@ -618,6 +626,12 @@ export class IslandView {
   private lastState: IslandState | null = null;
   tap(sx: number, sy: number): void {
     const key = this.pick(sx, sy);
+    if (this.targets) {
+      // choosing where something goes: only the highlighted spots answer, nothing else (no zoom, no sheets)
+      const spot = this.targetAt(sx, sy);
+      if (spot) this.onTapTarget(spot);
+      return;
+    }
     if (key === "tent") return this.onTapTent();
     if (key?.startsWith("land:")) return this.onTapLandmark(key.slice(5));
     if (this.lotScreenWidth() < 34) {
@@ -627,10 +641,19 @@ export class IslandView {
     }
     if (key) this.onTapLot(key);
   }
+  /** The highlighted spot under a screen point: a lot key "i,j" or a plaza tile "p:I,J". */
+  private targetAt(sx: number, sy: number): string | null {
+    if (!this.targets) return null;
+    const wx = (sx - this.world.x) / this.zoom;
+    const wy = (sy - this.world.y) / this.zoom;
+    const c = cellAt(wx, wy);
+    const lot = lotAt(wx, wy);
+    const k = lot ? `${lot.i},${lot.j}` : `p:${c.i},${c.j}`;
+    return this.targets.has(k) ? k : null;
+  }
   /** Screen position (CSS px) of a lot's centre, for tests and UI anchoring. */
   lotToScreen(key: string): { x: number; y: number } {
-    const [i, j] = kij(key);
-    const p = lotFront(i, j);
+    const p = this.spotFront(key);
     return { x: this.world.x + p.x * this.zoom, y: this.world.y + (p.y - TH / 2) * this.zoom };
   }
   /** Centre the camera on a landmark (tests and screenshots); returns where to tap its body on screen. */
@@ -663,8 +686,21 @@ export class IslandView {
   private selectedKey: string | null = null;
   private buildOpen = false;
   private lastLots: Record<string, unknown> | null = null;
+  private targets: Set<string> | null = null;
+  private targetPick: string | null = null;
+  /** Highlight the spots something can go on (lot keys and plaza tiles) and make only those tappable; null ends it. `chosen` is the one picked so far. */
+  setTargets(spots: readonly string[] | null, chosen: string | null = null): void {
+    this.targets = spots ? new Set(spots) : null;
+    this.targetPick = chosen;
+    this.paintSelect();
+  }
   setLots(st: IslandState): void {
-    this.lastLots = st.lots;
+    // a lot a landmark stands on is not an empty lot: no building corner ticks on it
+    if (st.landmarks) {
+      const lots: Record<string, unknown> = { ...st.lots };
+      for (const at of Object.values(st.landmarks)) delete lots[at];
+      this.lastLots = lots;
+    } else this.lastLots = st.lots;
     this.paintSelect();
   }
   private paintSelect(): void {
@@ -672,6 +708,14 @@ export class IslandView {
     const lots = this.lastLots;
     const key = this.selectedKey;
     if (!lots) return;
+    if (this.targets) {
+      for (const k of this.targets) {
+        const f = k.startsWith("p:") ? cellFront(...(k.slice(2).split(",").map(Number) as [number, number])) : lotFront(...(kij(k) as [number, number]));
+        const on = k === this.targetPick;
+        this.select.poly([f.x, f.y - TH, f.x + TW / 2, f.y - TH / 2, f.x, f.y, f.x - TW / 2, f.y - TH / 2]).fill({ color: on ? 0xd9a441 : 0xf4e3b2, alpha: on ? 0.55 : 0.32 }).stroke({ width: on ? 3 : 2, color: on ? 0xd9a441 : 0xfff3cf, alpha: 1 });
+      }
+      return;
+    }
     for (const k of lotCornerKeys(lots, key, this.buildOpen)) {
       const [i, j] = kij(k);
       paintLotCorners(this.select, lotFront(i, j), k === key);

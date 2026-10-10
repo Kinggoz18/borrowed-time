@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as E from "../src/core/engine";
 import { phys, physRadius } from "../src/core/streets";
+import { lotKeys } from "../src/core/rules";
 import { coastFor } from "../src/render/island/coast";
 import { BUILDING_SCALE, cellAt, cellFront, eraOf, ISLAND_R, layoutIsland, lotAt, lotFront, lotCornerKeys, ringCells, ringStage, visibleFigures } from "../src/render/island/layout";
 
@@ -124,28 +125,48 @@ describe("streets and landmarks in the layout", () => {
   it("is deterministic", () => {
     expect(at(3)).toEqual(at(3));
   });
-  it("landmarks unlock by tier: none before Town, three in Town, six in City; never in the build list", () => {
-    expect(at(0).landmarks).toHaveLength(0);
-    expect(at(1).landmarks).toHaveLength(0);
-    expect(at(2).landmarks.map((l) => l.id).sort()).toEqual(["bargain", "clock", "wreck"]);
-    expect(at(3).landmarks.map((l) => l.id).sort()).toEqual(["bargain", "bell", "clock", "dial", "lighthouse", "wreck"]);
-    for (const l of at(3).landmarks) expect(l.plaque.length).toBeGreaterThan(40);
-    expect(at(3).things.filter((t) => t.frame.startsWith("land/"))).toHaveLength(6);
+  const placed = (tier: number, spots: Record<string, string>, pixel: (f: string) => boolean = all) => {
+    const st = E.newGame({ seed: 4 });
+    st.tier = tier;
+    for (const k of lotKeys(tier)) if (!(k in st.lots)) st.lots[k] = null;
+    st.landmarks = spots;
+    return { st, lay: layoutIsland(st, { pixel }) };
+  };
+  it("nothing stands on the island until the player places it, even at City", () => {
+    expect(at(3).landmarks).toHaveLength(0);
+    expect(at(3).things.filter((t) => t.frame.startsWith("land/"))).toHaveLength(0);
+    expect(at(2).ground.some((g) => g.frame === "plaza/town")).toBe(true); // the four corner plazas are still paved
   });
-  it("landmarks stand on street junctions or the shore, never on a lot, and shore ones never move", () => {
-    const a = at(2), b = at(3);
-    for (const lay of [a, b]) {
-      const lots = new Set(lay.ground.filter((g) => g.key).map((g) => `${g.x},${g.y}`));
-      for (const l of lay.landmarks) expect(lots.has(`${l.x},${l.y}`)).toBe(false);
-    }
-    for (const id of ["wreck", "clock", "bargain"]) expect(a.landmarks.find((l) => l.id === id)).toEqual(b.landmarks.find((l) => l.id === id));
-    const coast = coastFor(ISLAND_R);
-    for (const l of b.landmarks) expect(coast.isLand(l.i, l.j)).toBe(true);
+  it("a placed landmark stands on its lot's cell (or the plaza tile), draws once and lists its plaque", () => {
+    const { st, lay } = placed(3, { clock: "2,3", dial: "p:-2,-2", bell: "-3,-2" });
+    expect(lay.landmarks.map((l) => l.id).sort()).toEqual(["bell", "clock", "dial"]);
+    const clock = lay.landmarks.find((l) => l.id === "clock")!;
+    const f = lotFront(2, 3);
+    expect([clock.x, clock.y]).toEqual([f.x, f.y]);
+    expect(clock.at).toBe("2,3");
+    const dial = lay.landmarks.find((l) => l.id === "dial")!;
+    const q = cellFront(-2, -2);
+    expect([dial.x, dial.y]).toEqual([q.x, q.y]);
+    for (const l of lay.landmarks) expect(l.plaque.length).toBeGreaterThan(40);
+    expect(lay.things.filter((t) => t.frame.startsWith("land/"))).toHaveLength(3);
+    expect(E.isFree(st, "2,3")).toBe(false);
+  });
+  it("a landmark placed on a crossing paves it as a plaza; the lot under one gets no bush", () => {
+    const { lay } = placed(2, { wreck: "p:6,6" });
+    const q = cellFront(6, 6);
+    expect(lay.ground.find((g) => g.x === q.x && g.y === q.y && !g.frame.startsWith("blend"))!.frame).toBe("plaza/town");
+  });
+  it("a landmark of a later age placed in an old save is not shown until its tier", () => {
+    const { lay } = placed(2, { dial: "p:-2,-2", clock: "p:2,-2" });
+    expect(lay.landmarks.map((l) => l.id)).toEqual(["clock"]);
+  });
+  it("the island is the same whatever is placed: only the landmarks differ", () => {
+    const a = at(2), b = placed(2, { clock: "p:-2,-2" }).lay;
+    expect(b.bounds).toEqual(a.bounds);
+    expect(b.fitBounds).toEqual(a.fitBounds);
   });
   it("landmarks wait for their art: not placed (or listed) while the era page has not streamed in", () => {
-    const st = E.newGame({ seed: 4 });
-    st.tier = 3;
-    const lay = layoutIsland(st, { pixel: (f) => !f.startsWith("land/") });
+    const { lay } = placed(3, { clock: "p:-2,-2" }, (f) => !f.startsWith("land/"));
     expect(lay.landmarks).toHaveLength(0);
   });
 });
@@ -207,10 +228,11 @@ describe("draw order uses the drawn (physical) position", () => {
     st.tier = 3;
     st.hours = 1000;
     st.lots["9,9"] = { type: "cottage", n: 3, inv: 1 };
+    st.landmarks = { clock: "p:-6,-6" }; // at the back, behind the cottage
     const lay = layoutIsland(st, { pixel: () => true });
     const b = lay.things.find((t) => t.key === "9,9")!;
     expect(b.z).toBe((phys(9) + phys(9)) * 100 + 10);
-    const clock = lay.things.find((t) => t.frame === "land/clock")!; // at the back, behind the cottage
+    const clock = lay.things.find((t) => t.frame === "land/clock")!; 
     expect(clock.z).toBeLessThan(b.z);
   });
 });

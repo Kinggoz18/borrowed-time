@@ -49,11 +49,13 @@ describe("pickAt: streets and landmarks", () => {
   it("a landmark answers with land:<id> on its body and its ground, from its tier on", () => {
     const st = rich(fresh(), 500);
     st.tier = 2;
+    st.landmarks = { clock: "p:-2,-2" };
     const layout = layoutIsland(st);
     const clock = layout.landmarks.find((l) => l.id === "clock")!;
     expect(pick(clock.x, clock.y - 60, st, layout)).toBe("land:clock");
     expect(pick(clock.x, clock.y - 16, st, layout)).toBe("land:clock");
-    const t1 = fresh();
-    expect(layoutIsland(t1).landmarks).toHaveLength(0);
+    expect(layoutIsland(fresh()).landmarks).toHaveLength(0);
+    st.landmarks = undefined;
+    expect(layoutIsland(st).landmarks).toHaveLength(0);
   });
 });

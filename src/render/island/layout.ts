@@ -11,7 +11,7 @@ import { ERA_TYPES, LOOKS_PER_ERA } from "../../art/island/buildings";
 import type { Era } from "../../art/island/palette";
 import type { RingPiece } from "../../art/island/scenery";
 import { coastFor, SHORE_CELLS } from "./coast";
-import { landmarkFrame, landmarksFor } from "./landmarks";
+import { landmarkFrame, placedLandmarks } from "./landmarks";
 import { forestProps, lotGreens } from "./greens";
 import { gateCell, logical, phys, physRadius, streetAt, streetMask } from "../../core/streets";
 
@@ -72,8 +72,8 @@ export interface IslandLayout {
   /** Hesper's tent, east shore outside the ring */
   tent: { x: number; y: number };
   gate: { x: number; y: number };
-  /** the landmarks this tier shows (cosmetic): where they stand and what their plaque says */
-  landmarks: { id: string; name: string; plaque: string; i: number; j: number; x: number; y: number }[];
+  /** the landmarks the player has placed (cosmetic): where they stand and what their plaque says; `at` is the lot key or plaza tile they hold */
+  landmarks: { id: string; name: string; plaque: string; at: string; i: number; j: number; x: number; y: number }[];
 }
 
 const hash = (i: number, j: number): number => {
@@ -132,9 +132,9 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
   const isSand = (i: number, j: number): boolean => Math.max(Math.abs(i), Math.abs(j)) >= physRadius(r) + 2 && coast.sandy(i, j);
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   const PR = physRadius(r);
-  const lms = landmarksFor(st.tier, coast);
-  // plazas: the four corners round the gnomon's block and the junctions a landmark stands on; the other crossings are plain street
-  const plazas = new Set(["2,2", "2,-2", "-2,2", "-2,-2", ...lms.filter((l) => "cell" in l.def.at).map((l) => `${l.i},${l.j}`)]);
+  const lms = placedLandmarks(st);
+  // plazas: the four corners round the gnomon's block and any crossing a landmark was placed on; the other crossings are plain street
+  const plazas = new Set(["2,2", "2,-2", "-2,2", "-2,-2", ...lms.filter((l) => l.at.startsWith("p:")).map((l) => `${l.i},${l.j}`)]);
   const greyFrame = (era: Era, kind: string, v: number, g: boolean): string => groundFrame(era, kind, v, g);
   void greyFrame;
   for (const { i, j } of coast.cells) {
@@ -213,7 +213,7 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
     // open land: woods and bushes on the meadow the ring has not claimed (cleared as it grows), a bush on some empty lots
     for (const pr of forestProps(coast, PR, tentCell)) if (has(pr.frame)) things.push(at(pr.i, pr.j, pr.frame, 6, pr.dx, pr.dy));
     for (const key of Object.keys(st.lots)) {
-      if (st.lots[key] !== null || owner[key]) continue;
+      if (st.lots[key] !== null || owner[key] || E.lmLot(st, key)) continue;
       const [i, j] = kij(key);
       const gp = lotGreens(i, j, Math.max(Math.abs(i), Math.abs(j)) >= r - 1);
       if (gp && has(gp.frame)) things.push(at(phys(i), phys(j), gp.frame, 3, gp.dx, gp.dy));
@@ -228,7 +228,7 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
     if (opts.pixel && !has(frame)) continue; // its era page has not streamed in yet
     const q = cellFront(lm.i, lm.j);
     things.push({ frame, x: q.x, y: q.y, z: depth(lm.i, lm.j, lm.def.id === "dial" ? 2 : 12) });
-    landmarks.push({ id: lm.def.id, name: lm.def.name, plaque: lm.def.plaque, i: lm.i, j: lm.j, x: q.x, y: q.y });
+    landmarks.push({ id: lm.def.id, name: lm.def.name, plaque: lm.def.plaque, at: lm.at, i: lm.i, j: lm.j, x: q.x, y: q.y });
   }
   const g = cellFront(0, 0);
   things.push({ frame: "gnomon", x: g.x, y: g.y, z: depth(0, 0, 10), key: "0,0" });
