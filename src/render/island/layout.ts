@@ -10,7 +10,7 @@ import { buildingFrame, groundFrame } from "../../art/island/atlas";
 import { ERA_TYPES, LOOKS_PER_ERA } from "../../art/island/buildings";
 import type { Era } from "../../art/island/palette";
 import type { RingPiece } from "../../art/island/scenery";
-import { coastFor } from "./coast";
+import { coastFor, SHORE_CELLS } from "./coast";
 
 /** Buildings draw a little larger than their lot so they read on a phone (owner feedback). */
 export const BUILDING_SCALE = 1.3;
@@ -26,7 +26,8 @@ export function cellAt(x: number, y: number): { i: number; j: number } {
 /** Draw order: back to front, then left to right; tall things after ground at the same cell. */
 export const depth = (i: number, j: number, lift = 0): number => (i + j) * 100 + (i - j) + lift;
 
-export const eraOf = (tier: number): Era => (tier === 0 ? "colony" : "village");
+export const ERAS: readonly Era[] = ["colony", "village", "town", "city"];
+export const eraOf = (tier: number): Era => ERAS[Math.max(0, Math.min(ERAS.length - 1, tier))];
 export const radius = (tier: number): number => (TIERS[tier].grid - 1) / 2;
 
 export interface Placed {
@@ -89,6 +90,8 @@ export function ringCells(r: number): { i: number; j: number; piece: RingPiece |
 
 export interface LayoutOpts {
   dusk?: boolean;
+  /** the era whose pixel pages are loaded (the layout waits on them instead of asking for frames that are not there yet); default: the tier's era */
+  era?: Era;
   /** frames that are pixel art: drawn at lot size already (the procedural stand-ins are scaled up) */
   pixel?: (frame: string) => boolean;
   /** shore overlay frame for a neighbour mask (null: nothing to draw) */
@@ -96,7 +99,7 @@ export interface LayoutOpts {
 }
 
 export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayout {
-  const era = eraOf(st.tier);
+  const era = opts.era ?? eraOf(st.tier);
   const r = radius(st.tier);
   const grey = E.greySet(st);
   const { owner, size } = E.claims(st);
@@ -105,13 +108,14 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
   const shore: Placed[] = [];
   const things: Placed[] = [];
   const coast = coastFor(r);
+  const isSand = (i: number, j: number): boolean => Math.max(Math.abs(i), Math.abs(j)) >= r + 2 && coast.sandy(i, j);
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const { i, j } of coast.cells) {
     const m = Math.max(Math.abs(i), Math.abs(j));
     const h = hash(i, j);
     const key = `${i},${j}`;
     const isLot = key in st.lots;
-    let kind = m >= r + 2 ? (coast.sandy(i, j) ? "sand" : "grass") : isLot ? "lot" : "grass";
+    let kind = m >= r + 2 ? (isSand(i, j) ? "sand" : "grass") : isLot ? "lot" : "grass";
     if (isLot && st.lots[key]?.type === "field") kind = "plot";
     if (isLot && roadOn && (i === 0 || j === 0) && st.lots[key] === null && !owner[key]) kind = "road";
     if (m === r + 1 && i === r + 1 && j === 0 && roadOn) kind = "road";
@@ -119,6 +123,17 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
     x0 = Math.min(x0, p.x - TW / 2); x1 = Math.max(x1, p.x + TW / 2);
     y0 = Math.min(y0, p.y - TH); y1 = Math.max(y1, p.y);
     ground.push({ frame: groundFrame(era, kind, Math.floor(h * 3), isLot && grey.has(key)), x: p.x, y: p.y, z: depth(i, j), key: isLot ? key : undefined });
+    // soft grass/sand border: the cell next to the other kind gets an overlay cut from the smoothed 3x3 neighbourhood (no 1-cell zigzag)
+    if ((kind === "grass" || kind === "sand") && opts.pixel) {
+      const own = kind === "sand";
+      let bm = 0;
+      for (let k = 0; k < SHORE_CELLS.length; k++) {
+        const ni = i + SHORE_CELLS[k][0], nj = j + SHORE_CELLS[k][1];
+        if (coast.isLand(ni, nj) && isSand(ni, nj) !== own) bm |= 1 << k;
+      }
+      const bf = bm ? `blend/${own ? "s" : "g"}/${bm}` : "";
+      if (bf && opts.pixel(bf)) ground.push({ frame: bf, x: p.x, y: p.y, z: depth(i, j) + 0.5 });
+    }
     const sf = opts.shoreFrame?.(coast.mask(i, j));
     if (sf) shore.push({ frame: sf, x: p.x, y: p.y - TH / 2, z: depth(i, j) });
   }
@@ -131,8 +146,12 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
     // a 2×2 / 3×3 claim extends behind the owner lot: centre the sprite on the footprint
     const cx = p.x, cy = p.y - ((n - 1) * TH) / 2;
     // fields are a flush ground decal: do not scale them past the lot (A6)
-    const frame = buildingFrame(era, frameType, stage, grey.has(key));
-    const scale = b.type === "field" || opts.pixel?.(frame) ? n : n * BUILDING_SCALE;
+    let frame = buildingFrame(era, frameType, stage, grey.has(key));
+    // a claim of 2x2 or 3x3 draws the era's own big model (…/f2, …/f3, drawn at that size), never the 1x1 one blown up
+    const big = n > 1 ? `${buildingFrame(era, frameType, stage)}/f${n}` : "";
+    const native = big !== "" && !!opts.pixel?.(big);
+    if (native) frame = big;
+    const scale = native ? 1 : b.type === "field" || opts.pixel?.(frame) ? n : n * BUILDING_SCALE;
     things.push({ frame, x: cx, y: cy + ((n - 1) * TH) / 2, z: depth(i, j, 10), key, scale });
   }
   const g = cellFront(0, 0);

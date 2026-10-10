@@ -22,12 +22,14 @@ export interface Ambient {
   clouds: number;
   /** grass tufts scattered on open grass (static on Low) */
   tufts: number;
+  /** lamplight halos on lit buildings at dusk and night (0 = none; Low keeps the baked window light only) */
+  halos: number;
 }
 
 export const AMBIENT: Record<Tier, Ambient> = {
-  low: { seaFps: 0, gulls: 0, sway: false, crests: 0, mesh: false, glint: false, clouds: 0, tufts: 16 },
-  mid: { seaFps: 2, gulls: 3, sway: true, crests: 12, mesh: false, glint: false, clouds: 0, tufts: 36 },
-  high: { seaFps: 2, gulls: 4, sway: true, crests: 20, mesh: true, glint: true, clouds: 2, tufts: 48 },
+  low: { seaFps: 0, gulls: 0, sway: false, crests: 0, mesh: false, glint: false, clouds: 0, tufts: 16, halos: 0 },
+  mid: { seaFps: 2, gulls: 3, sway: true, crests: 12, mesh: false, glint: false, clouds: 0, tufts: 36, halos: 24 },
+  high: { seaFps: 2, gulls: 4, sway: true, crests: 20, mesh: true, glint: true, clouds: 2, tufts: 48, halos: 80 },
 };
 
 export type SeaState = "calm" | "rough";

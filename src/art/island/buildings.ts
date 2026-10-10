@@ -234,16 +234,19 @@ function generic(p: Pen, k: EraKit, stage: number): void {
   p.gable(0.2, 0.25, 0.8, 0.75, 12.5 + stage * 2, 10, k.roof, stage % 2 === 0);
 }
 
-export const LOOKS_PER_ERA: Record<Era, number> = { colony: 2, village: 4 };
+/** Looks reached per era (level cap / 3, ART_BIBLE.md §8): Colony 2, Village 4, Town 6, City 7. */
+export const LOOKS_PER_ERA: Record<Era, number> = { colony: 2, village: 4, town: 6, city: 7 };
 export const ERA_TYPES: Record<Era, BType[]> = {
   colony: ["field", "cottage", "workshop", "tower", "bank"],
   village: ["field", "cottage", "workshop", "tower", "bank", "lantern", "trade"],
+  town: ["field", "cottage", "workshop", "tower", "bank", "lantern", "trade", "mirror", "academy", "hospital"],
+  city: ["field", "cottage", "workshop", "tower", "bank", "lantern", "trade", "mirror", "academy", "hospital", "exchange", "harbour", "observatory"],
 };
 
 /** Draws one building look. `stage` is clamped to the looks this era reaches. */
 export function drawBuilding(p: Pen, era: Era, type: BType, stage: number): void {
   const k = kitFor(era);
-  const book = era === "village" ? VILLAGE_LOOKS : COLONY_LOOKS;
+  const book = era === "colony" ? COLONY_LOOKS : VILLAGE_LOOKS;
   const list = book[type] ?? (era === "colony" ? VILLAGE_LOOKS[type] : undefined);
   const s = Math.min(stage, (list?.length ?? 1) - 1);
   if (type !== "field") p.shadow(0.2, 0.2, 0.85, 0.85, 20);

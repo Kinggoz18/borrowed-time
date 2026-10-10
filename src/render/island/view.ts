@@ -16,6 +16,7 @@ import { BATTLE_RESOLVED_EVENT, battleTimeline, type BattlePhase, boatCount, pre
 import { coastFor } from "./coast";
 import { defaultZoom, MIN_LOT_PX } from "./framing";
 import { arrowCount, monsterFrame, monsterHeight, monsterPose, monsterSize, type MonsterPose } from "./monster";
+import type { Era } from "../../art/island/palette";
 import { cellAt, cellFront, depth, eraOf, layoutIsland, lotCornerKeys, radius, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
 import { pickAt } from "./pick";
 import { toTextures, type IslandTextures } from "./textures";
@@ -45,7 +46,7 @@ interface Tween {
   done?: () => void;
 }
 
-const SWAY_FRAME = /^(grey\/)?b\/colony\/(cottage|tower)\/|^tent$/;
+const SWAY_FRAME = /^(grey\/)?b\/(colony|village)\/(cottage|tower)\/|^tent$/;
 const isWatch = (job: Job) => job === "watch" || job === "nell";
 
 /** Play-area insets (CSS px); updated from the DOM HUD and rail each frame. */
@@ -100,6 +101,7 @@ export class IslandView {
   private retired: IslandTextures[] = [];
   private thumbs = new Map<string, string>();
   private era = "";
+  private loadingEra = new Set<string>();
   private layout!: IslandLayout;
   private sprites = new Map<string, Piece>();
   private meshes: { mesh: MeshPlane; ph: number }[] = [];
@@ -115,6 +117,9 @@ export class IslandView {
   private gulls: { sp: Sprite; spec: GullSpec }[] = [];
   private clouds: { sp: Sprite; x: number; y: number; v: number }[] = [];
   private swayers: { sp: Piece; frames: Texture[]; ph: number }[] = [];
+  /** lamplight halos on lit buildings (dusk and night), additive pixel dither */
+  private halos: { sp: Sprite; ph: number; base: number }[] = [];
+  private halo = 0;
   private flagTex: Texture[] = [];
   private smokeTex: Texture[] = [];
   private gullTex: Texture[] = [];
@@ -197,11 +202,22 @@ export class IslandView {
 
   /** Per era: the pixel pages plus a procedural atlas for whatever they do not draw yet. */
   private ensureAtlas(st: IslandState): void {
-    const era = eraOf(st.tier);
+    let era: Era = eraOf(st.tier);
     if (era === this.era) return;
+    if (!this.art.ready(era)) {
+      // the era's pixel pages stream in; keep drawing the era we have (the layout asks for its frames only) until they land
+      if (!this.loadingEra.has(era)) {
+        this.loadingEra.add(era);
+        void this.art.ensureEra(era).then(() => {
+          this.loadingEra.delete(era);
+          if (this.lastState) this.sync(this.lastState);
+        });
+      }
+      if (this.era) return;
+      era = "colony"; // first frame of a saved Town or City: the colony pages are the ones loaded; the real era swaps in as soon as it lands
+    }
     this.releaseAtlasSprites();
     this.art.alias(era);
-    void this.art.ensureEra(era);
     const old = this.proc;
     const s = this.cfg.atlas === "low" ? 1 : 2;
     this.atlas = buildAtlas(era, s, undefined, 2048, (n) => !this.art.has(n));
@@ -243,7 +259,7 @@ export class IslandView {
     this.lastState = st;
     this.ensureAtlas(st);
     const prevR = this.layout?.r;
-    this.layout = layoutIsland(st, { ...opts, pixel: (f) => this.art.has(f), shoreFrame: (m) => this.art.shoreFrame(m) });
+    this.layout = layoutIsland(st, { ...opts, era: (this.era || undefined) as Era | undefined, pixel: (f) => this.art.has(f), shoreFrame: (m) => this.art.shoreFrame(m) });
     if (prevR !== this.layout.r || this.ground.children.length === 0) {
       this.ground.removeChildren().forEach((c) => c.destroy());
       this.shore.removeChildren().forEach((c) => c.destroy());
@@ -770,6 +786,8 @@ export class IslandView {
   private clearFx(): void {
     for (const f of this.flags) f.sp.destroy();
     this.flags = [];
+    for (const h of this.halos) h.sp.destroy();
+    this.halos = [];
     for (const p of this.puffs) p.sp.destroy();
     this.puffs = [];
     this.hearths = [];
@@ -802,6 +820,33 @@ export class IslandView {
       sp.zIndex = t.z + 3;
       this.objects.addChild(sp);
       this.flags.push({ sp, ph: (t.x * 0.013) % 4 });
+    }
+    this.syncHalos();
+  }
+  /** Lamplight: a small halo on each lit building (two on the Lantern Hall), a bigger one on Hesper's tent. Pooled by the Ambient cap. */
+  private syncHalos(): void {
+    for (const h of this.halos) h.sp.destroy();
+    this.halos = [];
+    if (!this.amb.halos || !this.art.has("fx/halo/0")) return;
+    for (const t of this.layout.things) {
+      if (this.halos.length >= this.amb.halos) break;
+      const f = t.frame.replace(/^grey\//, "");
+      if (t.frame.startsWith("grey/") || f === "gnomon" || /\/field\//.test(f) || f.startsWith("p/")) continue;
+      const big = /\/f[23]$/.test(f);
+      const spots: { dx: number; dy: number; size: number }[] =
+        f === "tent" ? [{ dx: 0, dy: -20, size: 2 }]
+        : /\/lantern\//.test(f) ? [{ dx: -14, dy: -16, size: 1 }, { dx: 14, dy: -16, size: 1 }]
+        : /\/(cottage|workshop|bank|trade|academy|hospital|exchange|harbour)\//.test(f) ? [{ dx: -6, dy: big ? -34 : -18, size: big ? 1 : 0 }]
+        : [];
+      for (const sp of spots) {
+        const h = new Sprite(this.art.get(`fx/halo/${sp.size}`));
+        h.blendMode = "add";
+        h.alpha = 0;
+        h.position.set(this.snap(t.x + sp.dx * (t.scale ?? 1)), this.snap(t.y + sp.dy * (t.scale ?? 1)));
+        h.zIndex = t.z + 4;
+        this.objects.addChild(h);
+        this.halos.push({ sp: h, ph: (t.x * 0.37 + t.y * 0.11) % 6.28, base: 0.5 });
+      }
     }
   }
   private emitPuff(h: { x: number; y: number }): void {
@@ -891,6 +936,14 @@ export class IslandView {
       const f = this.flags[i];
       f.ph += dt * 6;
       f.sp.texture = flagTex[Math.floor(f.ph) % flagTex.length];
+    }
+    // lamplight fades in at dusk and out at dawn, flickering a little (steady on a paused game)
+    const lit = this.night || this.light > 0.88;
+    this.halo += ((lit ? 1 : 0) - this.halo) * Math.min(1, dt * 1.5);
+    for (let i = 0; i < this.halos.length; i++) {
+      const h = this.halos[i];
+      h.sp.visible = this.halo > 0.02;
+      if (h.sp.visible) h.sp.alpha = this.halo * h.base * (0.82 + 0.18 * Math.sin(this.clock * 7 + h.ph) * Math.sin(this.clock * 2.3 + h.ph * 2));
     }
     this.emitT += dt;
     if (this.emitT > 0.38) {

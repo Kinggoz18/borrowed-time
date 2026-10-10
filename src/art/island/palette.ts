@@ -29,7 +29,7 @@ export const GNOMON = r("#BDB4A3", "#A39A8A", "#7B7366");
 export const TARR = r("#4A403A", "#2A2420", "#1C1815");
 export const STRIPE = r("#CF7A55", HESPER, "#8E4A2E");
 
-export type Era = "colony" | "village";
+export type Era = "colony" | "village" | "town" | "city";
 
 /** Material ramps per era. Village: Hearth & Harvest (§4 table). Colony: Wreck & Frontier from the constants. */
 export interface EraKit {
@@ -72,4 +72,5 @@ export const COLONY: EraKit = {
   accent: r("#7FB3B1", TEAL, TEAL_DEEP),
 };
 export const BLUE_DOOR = r("#5F82A3", "#4E6F8E", "#38526B");
-export const kitFor = (era: Era): EraKit => (era === "village" ? VILLAGE : COLONY);
+/** The procedural stand-ins only exist for Colony and Village colours; Town and City draw from their pixel pages (the stand-ins are a fallback for a page that has not loaded). */
+export const kitFor = (era: Era): EraKit => (era === "colony" ? COLONY : VILLAGE);

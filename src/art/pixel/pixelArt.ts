@@ -46,6 +46,8 @@ export interface PixelArt {
   glint: Texture;
   /** Lazily add an era's sets (no-op when already loaded). */
   ensureEra(era: string): Promise<void>;
+  /** True once every set the era needs is loaded. */
+  ready(era: string): boolean;
   shoreFrame(mask: number): string | null;
   /** Register an era's `g/<era>/…` ground aliases once its sets are loaded. */
   alias(era: string): void;
@@ -156,7 +158,9 @@ export async function loadPixelArt(base: string, key: ArtScale, era: string, io:
     anchor: (name) => anchors[name],
     offset(name, p) {
       const a = frameWorld.get(name);
-      return a ? { x: (p[0] - a.ax) / s, y: (p[1] - a.ay) / s } : { x: 0, y: 0 };
+      // anchors are authored in the fine (m) grid's pixels; this page may be the chunky one
+      const k = s / manifest.scales.m.s;
+      return a ? { x: (p[0] * k - a.ax) / s, y: (p[1] * k - a.ay) / s } : { x: 0, y: 0 };
     },
     calm,
     rough,
@@ -165,6 +169,7 @@ export async function loadPixelArt(base: string, key: ArtScale, era: string, io:
       for (const set of manifest.eras[e] ?? []) await addSet(set);
       aliasEra(e);
     },
+    ready: (e) => (manifest.eras[e] ?? ["shared"]).every((set) => loaded.has(set)),
     alias: aliasEra,
     shoreFrame(mask) {
       return manifest.shore.masks[String(mask)] ?? null;

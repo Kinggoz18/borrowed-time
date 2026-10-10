@@ -25,8 +25,8 @@ describe("island atlas catalogue", () => {
       for (const p of packed.pages) expect(Math.max(p.w, p.h)).toBeLessThanOrEqual(2048);
     });
   }
-  it("Village has four looks per type and the Colony two (ART_BIBLE.md §9)", () => {
-    expect(LOOKS_PER_ERA).toEqual({ colony: 2, village: 4 });
+  it("every era draws the looks its level cap reaches: Colony 2, Village 4, Town 6, City 7 (ART_BIBLE.md §8, §9)", () => {
+    expect(LOOKS_PER_ERA).toEqual({ colony: 2, village: 4, town: 6, city: 7 });
     expect(ERA_TYPES.village).toEqual(expect.arrayContaining(["field", "cottage", "workshop", "tower", "bank", "lantern", "trade"]));
   });
 });

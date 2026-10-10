@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pixlib import *
 import terrain as T
 import models as M
+import era_models as EM
 import monster as MON
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -146,9 +147,15 @@ for name in ("boat", "boat/beached"):
     a, d = pixelize_dump(name)
     add("shared", name, a, round(d["ax"] * 1.5), round(d["ay"] * 1.5))
 
+# ------------------------------------------------------------------------------------------------ lamplight halos (dusk and night)
+import fxhalo as FXH
+for k, r in enumerate((9, 14, 22)):
+    a, c = FXH.halo(r)
+    add("shared", f"fx/halo/{k}", a, c, c)
+
 # ------------------------------------------------------------------------------------------------ gnomon, tent, ring, gate
-a, info = M.gnomon(); add("colony", "gnomon", a, M.BAX, M.BAY, info)
-a, anc, info = M.tent(); add("colony", "tent", a, anc[0], anc[1], info)
+a, info = M.gnomon(); add("shared", "gnomon", a, M.BAX, M.BAY, info)
+a, anc, info = M.tent(); add("shared", "tent", a, anc[0], anc[1], info)
 for st in range(4):
     for piece in ("segA", "segB", "post"):
         add("shared", f"ring/{st}/{piece}", M.ring_piece(st, piece), M.RAX, M.RAY)
@@ -160,8 +167,8 @@ for st in range(4):
 BUILD = {
     ("cottage", 0): M.cottage_l1, ("cottage", 1): M.cottage_l2,
     ("tower", 0): M.tower_l1, ("tower", 1): M.tower_l2,
-    ("workshop", 0): M.workshop_l1, ("workshop", 1): M.workshop_l2,
-    ("bank", 0): M.bank_l1, ("bank", 1): M.bank_l2,
+    ("workshop", 0): EM.colony_workshop_l1, ("workshop", 1): EM.colony_workshop_l2,
+    ("bank", 0): EM.colony_bank_l1, ("bank", 1): EM.colony_bank_l2,
 }
 for (typ, st), fn in BUILD.items():
     a, info = fn()
@@ -195,8 +202,8 @@ def mkpal(px, n):
 colony = list(frames["colony"].values())
 shared = list(frames["shared"].values())
 b_px = sample_pixels([f for f in colony if not f.info.get("x")], 900)
-terr = [f for n, f in frames["shared"].items() if n.startswith(("g/", "shore/", "grey/g/"))]
-other = [f for n, f in frames["shared"].items() if not n.startswith(("g/", "shore/", "grey/g/"))]
+terr = [f for n, f in frames["shared"].items() if n.startswith(("g/", "shore/", "grey/g/", "blend/"))]
+other = [f for n, f in frames["shared"].items() if not n.startswith(("g/", "shore/", "grey/g/", "blend/"))]
 pal = np.concatenate([
     mkpal(b_px, 96), mkpal(sample_pixels(terr, 600), 64), mkpal(sample_pixels(other, 500), 80),
     np.array([INK, (255, 255, 255), (28, 36, 22)], np.uint8)])

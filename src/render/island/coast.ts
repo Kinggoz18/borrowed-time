@@ -79,6 +79,23 @@ export function coastFor(r: number): Coast {
       }
     for (const k of add) land[k] = 1;
   }
+  // Smooth the outline: a 3x3 majority filter turns the 1-cell zigzag of a diagonal coast into long straight runs along the iso axes
+  // (the sawtooth the owner saw), then the prune above runs once more on what is left.
+  const n8 = (i: number, j: number) => {
+    let n = 0;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if ((a || b) && get(i + a, j + b)) n++;
+    return n;
+  };
+  for (let pass = 0; pass < 2; pass++) {
+    const flip: number[] = [];
+    for (let i = -S; i <= S; i++)
+      for (let j = -S; j <= S; j++) {
+        if (beach(i, j) || (i === r + 2 && j === -r + 1)) continue;
+        const n = n8(i, j);
+        if (get(i, j) ? n <= 3 : n >= 5) flip.push(at(i, j));
+      }
+    for (const k of flip) land[k] = land[k] ? 0 : 1;
+  }
   const cells: { i: number; j: number }[] = [];
   let extent = 0;
   for (let i = -S; i <= S; i++)
@@ -101,7 +118,8 @@ export function coastFor(r: number): Coast {
     sandy(i, j) {
       if (Math.max(Math.abs(i), Math.abs(j)) < r + 2) return false;
       for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (!get(i + a, j + b)) return true;
-      for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) if (!get(i + a, j + b)) return hcell(i, j) < 0.5;
+      // the second band of beach comes in broad patches (smooth noise), not cell-by-cell speckle
+      for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) if (!get(i + a, j + b)) return vnoise(i / 2.4 + 5, j / 2.4 + 9) < 0.58;
       return false;
     },
   };
