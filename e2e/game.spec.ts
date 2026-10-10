@@ -107,6 +107,11 @@ test("the arc: empty land to Village", async ({ page }) => {
   await act(page, "build").click();
   await expect(page.locator(".sheet")).toBeVisible();
   await shot(page, "04-build-sheet");
+  // grouped by function, and nothing this era has not unlocked (no Roads in the Colony); the next era shows as one slim line
+  await expect(page.locator(".sheet [data-group]").first()).toBeVisible();
+  await expect(page.locator('.sheet [data-group="defence"] [data-build="palisade"]')).toHaveCount(1);
+  await expect(page.locator('.sheet [data-build="road"]')).toHaveCount(0);
+  await expect(page.locator(".sheet [data-next-era]")).toContainText("Village unlocks");
   await act(page, "build-palisade").click();
   expect((await st(page)).pal).not.toBeNull();
   await expect(page.locator(".coach-tip")).toContainText("Field");
@@ -331,10 +336,28 @@ test("tap targets are at least 44 px and nothing overlaps the HUD", async ({ pag
   expect(hudBottom).toBeLessThanOrEqual(88);
 });
 
-test("held upright, the browser asks to turn the phone sideways", async ({ page }) => {
+test("held upright with Landscape chosen, the browser asks to turn the phone sideways", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/");
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem("bt.settings", JSON.stringify({ sound: true, haptics: true, quality: "auto", orientation: "landscape" }));
+  });
+  await page.reload();
+  await page.waitForFunction(() => window.__bt?.ready === true);
+  await expect(page.getByText("Turn your phone sideways to play.")).toBeVisible();
+});
+
+test("portrait setting: a fresh install defaults to Auto, so held upright it just plays", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await fresh(page);
-  await expect(page.getByText("Turn your phone sideways to play.")).toBeVisible();
+  await expect(page.getByText("Turn your phone sideways to play.")).toBeHidden();
+  await expect(page.locator('[data-screen="home"]')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.dataset.orient)).toBe("auto");
+  await act(page, "settings").click();
+  await expect(page.locator('select[data-set="orientation"]')).toHaveValue("auto");
+  await expect(page.locator("[data-credits]")).toContainText("Ribhav Agrawal");
+  await expect(page.locator("[data-credits]")).toContainText("Bryan Jesus De Los Santos Breton");
 });
 
 test("portrait setting: home and new game at 360x800", async ({ page }) => {
