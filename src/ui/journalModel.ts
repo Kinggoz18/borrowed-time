@@ -33,6 +33,7 @@ export interface JEntry {
   kind: string;
 }
 
+const hrs = (n: number): string => `${n} Hour${n === 1 ? "" : "s"}`;
 const UP = (t: BType): string => B[t].name;
 const an = (name: string): string => (/^[aeiou]/i.test(name) ? "an" : "a");
 
@@ -77,31 +78,31 @@ export function journalEntries(events: readonly LoggedEvent[], seed: number): JE
         const borrowedDusk = res.decision === "borrow" ? "borrowed the dusk" : "";
         if (res.boss) {
           const k = res.won ? "bossHeld" : "bossLost";
-          const facts = res.won ? [`${res.loot} Hours salvaged`, res.damaged.length ? "" : "nothing taken", borrowedDusk] : [res.stolen ? `${res.stolen} Hours taken` : "", res.damaged.length ? `${res.damaged.length} hit` : "", borrowedDusk];
+          const facts = res.won ? [`${hrs(res.loot)} salvaged`, res.damaged.length ? "" : "nothing taken", borrowedDusk] : [res.stolen ? `${hrs(res.stolen)} taken` : "", res.damaged.length ? `${res.damaged.length} hit` : "", borrowedDusk];
           entry(ev, { kind: k, group: "nights", ...say(k, ev, {}), tag: { icon: res.won ? "shield" : "fire", word: res.won ? TAG_WORDS.held : TAG_WORDS.lost }, big: true, warn: !res.won, facts: facts.filter(Boolean).join(" · ") });
         } else if (res.won) {
           const near = res.D - res.S < res.S * 0.08;
           const k = near ? "nearMiss" : "held";
-          entry(ev, { kind: k, group: "nights", ...say(k, ev, {}), tag: { icon: "shield", word: TAG_WORDS.held }, facts: [`${res.loot} Hours salvaged`, res.boat ? "a boat at the docks" : "", borrowedDusk].filter(Boolean).join(" · ") });
+          entry(ev, { kind: k, group: "nights", ...say(k, ev, {}), tag: { icon: "shield", word: TAG_WORDS.held }, facts: [`${hrs(res.loot)} salvaged`, res.boat ? "a boat at the docks" : "", borrowedDusk].filter(Boolean).join(" · ") });
         } else {
           const k = res.villagersLost > 0 ? "lostPeople" : "lostLight";
-          const facts = [res.stolen ? `${res.stolen} Hours taken` : "", res.damaged.length ? `${res.damaged.length} building${res.damaged.length > 1 ? "s" : ""} hit` : "", saved > 0 ? `${saved} carried home alive` : ""].filter(Boolean).join(" · ");
+          const facts = [res.stolen ? `${hrs(res.stolen)} taken` : "", res.damaged.length ? `${res.damaged.length} building${res.damaged.length > 1 ? "s" : ""} hit` : "", saved > 0 ? `${saved} carried home alive` : ""].filter(Boolean).join(" · ");
           entry(ev, { kind: k, group: "nights", ...say(k, ev, { people: numWord(res.villagersLost) }), tag: { icon: "fire", word: TAG_WORDS.lost }, warn: true, facts });
         }
         break;
       }
       case "seized": {
         const name = UP(ev.seizure.type);
-        entry(ev, { kind: "seized", group: "hesper", ...say("seized", ev, { building: name }), tag: { icon: "owed", word: TAG_WORDS.taken }, warn: true, quote: HESPER_LINES[0], facts: `${ev.seizure.credit} Hours written off what we owe` });
+        entry(ev, { kind: "seized", group: "hesper", ...say("seized", ev, { building: name }), tag: { icon: "owed", word: TAG_WORDS.taken }, warn: true, quote: HESPER_LINES[0], facts: `${hrs(ev.seizure.credit)} written off what we owe` });
         break;
       }
       case "borrowed": {
-        if (ev.first) entry(ev, { kind: "firstBorrow", group: "hesper", ...say("firstBorrow", ev, {}), tag: { icon: "owed", word: TAG_WORDS.borrowed }, facts: [`+${ev.x} Hours`, ev.shortTomorrow > 0 ? `tomorrow ${ev.shortTomorrow} ${ev.shortTomorrow === 1 ? "hour" : "hours"} shorter` : ""].filter(Boolean).join(" · ") });
-        else if (ev.debt !== undefined && ev.lim && ev.debt >= NEAR_LIMIT * ev.lim) entry(ev, { kind: "nearLimit", group: "hesper", ...say("nearLimit", ev, {}), tag: { icon: "owed", word: TAG_WORDS.borrowed }, warn: true, quote: HESPER_LINES[3], facts: `+${ev.x} Hours` });
+        if (ev.first) entry(ev, { kind: "firstBorrow", group: "hesper", ...say("firstBorrow", ev, {}), tag: { icon: "owed", word: TAG_WORDS.borrowed }, facts: [`+${hrs(ev.x)}`, ev.shortTomorrow > 0 ? `tomorrow ${ev.shortTomorrow} ${ev.shortTomorrow === 1 ? "hour" : "hours"} shorter` : ""].filter(Boolean).join(" · ") });
+        else if (ev.debt !== undefined && ev.lim && ev.debt >= NEAR_LIMIT * ev.lim) entry(ev, { kind: "nearLimit", group: "hesper", ...say("nearLimit", ev, {}), tag: { icon: "owed", word: TAG_WORDS.borrowed }, warn: true, quote: HESPER_LINES[3], facts: `+${hrs(ev.x)}` });
         break;
       }
       case "repaid":
-        if (ev.cleared) entry(ev, { kind: "paid", group: "hesper", ...say("paid", ev, {}), tag: { icon: "check", word: TAG_WORDS.repaid }, facts: `${ev.x} Hours, the last of it` });
+        if (ev.cleared) entry(ev, { kind: "paid", group: "hesper", ...say("paid", ev, {}), tag: { icon: "check", word: TAG_WORDS.repaid }, facts: `${hrs(ev.x)}, the last of it` });
         break;
       case "research": {
         const t = TECH[ev.id];

@@ -417,3 +417,11 @@ describe("laptop key caps", () => {
     expect(keyAction({ key: "j", metaKey: true })).toBeNull();
   });
 });
+
+describe("journal facts read right at 1", () => {
+  it("says 1 Hour, not 1 Hours", () => {
+    const ev = { kind: "borrowed", seq: 1, season: 1, day: 1, x: 1, first: true, shortTomorrow: 0 } as unknown as LoggedEvent;
+    const out = journalEntries([ev], 1);
+    expect(out[0]?.facts ?? "").not.toMatch(/\b1 Hours\b/);
+  });
+});
