@@ -102,8 +102,9 @@ const domCanvas: CanvasFactory = (w, h) => {
   return c;
 };
 
-export function buildAtlas(era: Era, s: number, make: CanvasFactory = domCanvas, maxSize = 2048): IslandAtlas {
-  const defs = frameDefs(era);
+/** `keep` drops frames another atlas already supplies (the pixel-art pages replace most stand-ins). */
+export function buildAtlas(era: Era, s: number, make: CanvasFactory = domCanvas, maxSize = 2048, keep: (name: string) => boolean = () => true): IslandAtlas {
+  const defs = frameDefs(era).filter((d) => keep(d.name));
   const drawn = new Map<string, HTMLCanvasElement>();
   for (const f of defs) {
     const w = Math.ceil(f.w * s), h = Math.ceil(f.h * s);

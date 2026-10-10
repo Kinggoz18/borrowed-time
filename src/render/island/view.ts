@@ -3,15 +3,18 @@
  * the boot-time atlas with plain sprites (one batch per atlas page). Reads IslandState; never
  * changes it. Animations are presentation only: the rules already resolved before they play.
  */
-import { Application, Container, Graphics, Particle, ParticleContainer, Sprite, TilingSprite, type FederatedPointerEvent } from "pixi.js";
+import { Application, Container, Graphics, Sprite, TilingSprite, type FederatedPointerEvent, type Texture } from "pixi.js";
 import type { RaidResult } from "../../core/engine";
 import { kij } from "../../core/rules";
 import type { IslandState } from "../../core/state";
 import { buildAtlas, type IslandAtlas } from "../../art/island/atlas";
+import { loadPixelArt, type PixelArt } from "../../art/pixel/pixelArt";
 import { personFrameName, type Job, type PersonAnim, type PersonView } from "../../art/island/people";
 import type { TierConfig } from "../config";
+import { AMBIENT, crestAlpha, gullPose, gullSpecs, rng, seaState, seaStepsPerSecond, WAVE_DIR, type Ambient, type GullPose as GullPoseT, type GullSpec } from "./ambient";
 import { BATTLE_RESOLVED_EVENT, battleTimeline, boatCount, prefersReducedMotion, raiderCount } from "./battle";
-import { cellAt, cellFront, eraOf, layoutIsland, lotCornerKeys, radius, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
+import { coastFor } from "./coast";
+import { cellAt, cellFront, depth, eraOf, layoutIsland, lotCornerKeys, radius, TH, TW, visibleFigures, type IslandLayout, type Placed } from "./layout";
 import { pickAt } from "./pick";
 import { toTextures, type IslandTextures } from "./textures";
 import { assignWalkers, blockedLots, facingOf, lotCentre, pathWorld, roadLots, route } from "./walkers";
@@ -46,18 +49,46 @@ let railRight = 104;
 /** Gameplay camera starts this much closer than "whole island fits" (owner: too far out). */
 export const PLAY_ZOOM = 1.6;
 
+/** A pooled foam crest rolling toward the island during the raid. */
+interface Crest {
+  sp: Sprite;
+  x: number;
+  y: number;
+  age: number;
+  life: number;
+  on: boolean;
+}
+interface Tuft {
+  sp: Sprite;
+  g: number;
+  ph: number;
+}
+interface Puff {
+  sp: Sprite;
+  life: number;
+  max: number;
+  vy: number;
+  x: number;
+  y: number;
+  on: boolean;
+}
+
 export class IslandView {
   readonly world = new Container();
   private ground = new Container();
+  private shore = new Container();
   private objects = new Container();
   private sea = new Container();
+  private sky = new Container();
   private overlay = new Container();
-  private grain!: TilingSprite;
   private wash = new Graphics();
   private select = new Graphics();
   private shadow = new Graphics();
-  private tex!: IslandTextures;
-  private atlas!: IslandAtlas;
+  /** pixel art first, the procedural stand-ins (later eras) for what it does not draw yet */
+  private tex = { get: (n: string): Texture => this.lookup(n), has: (n: string): boolean => this.art.has(n) || !!this.proc?.has(n) };
+  private art!: PixelArt;
+  private proc: IslandTextures | null = null;
+  private atlas: IslandAtlas | null = null;
   /** Previous era atlases kept alive so Pixi can drop GPU bind groups without a warning. */
   private retired: IslandTextures[] = [];
   private thumbs = new Map<string, string>();
@@ -68,17 +99,34 @@ export class IslandView {
   private tweens: Tween[] = [];
   private boats: Sprite[] = [];
   private boatBase = new Map<Sprite, number>();
-  private foamBits: { sp: Sprite; bx: number; by: number; ph: number }[] = [];
+  private amb: Ambient;
+  private seaTile: TilingSprite | null = null;
+  private glintTile: TilingSprite | null = null;
+  private crests: Crest[] = [];
+  private tufts: Tuft[] = [];
+  private gulls: { sp: Sprite; spec: GullSpec }[] = [];
+  private clouds: { sp: Sprite; x: number; y: number; v: number }[] = [];
+  private swayers: { sp: Sprite; frames: Texture[]; ph: number }[] = [];
+  private flagTex: Texture[] = [];
+  private smokeTex: Texture[] = [];
+  private gullTex: Texture[] = [];
+  private grassTex: Texture[][] = [];
   private flags: { sp: Sprite; ph: number }[] = [];
-  private smoke = new ParticleContainer({ dynamicProperties: { position: true, color: true, scale: true } });
-  private puffs: { p: Particle; life: number; max: number; vy: number }[] = [];
+  private puffs: Puff[] = [];
   private hearths: { x: number; y: number }[] = [];
   private emitT = 0;
   private clock = 0;
+  private seaStep = -1;
+  private raidOn = false;
+  private rand = rng(0x5ea);
   private wasNight = false;
   private lastSt: IslandState | null = null;
+  /** The zoom actually drawn: a whole number of device pixels per art pixel (see snapZoom). */
   private zoom = 1;
+  /** The zoom the player asked for (pinch and wheel accumulate here). */
+  private rawZoom = 1;
   private fitZoom = 1;
+  private ringFit = 1;
   private cx = 0;
   private cy = 0;
   private pointers = new Map<number, { x: number; y: number }>();
@@ -95,11 +143,13 @@ export class IslandView {
     private app: Application,
     private cfg: TierConfig,
   ) {
+    this.amb = AMBIENT[cfg.tier];
+    if (import.meta.env.DEV) (window as unknown as { __island: IslandView }).__island = this;
     this.objects.sortableChildren = true;
-    this.smoke.zIndex = 80;
-    this.objects.addChild(this.smoke);
-    this.world.addChild(this.sea, this.ground, this.shadow, this.select, this.objects);
+    this.sky.eventMode = "none";
+    this.world.addChild(this.sea, this.ground, this.shore, this.shadow, this.select, this.objects, this.sky);
     app.stage.addChild(this.world, this.overlay);
+    this.overlay.addChild(this.wash);
     app.stage.eventMode = "static";
     app.stage.hitArea = app.screen;
     app.stage.on("pointerdown", (e) => this.down(e));
@@ -111,45 +161,72 @@ export class IslandView {
     app.renderer.on("resize", () => this.fit(false));
   }
 
-  /** Builds (or rebuilds, on an era change) the atlas for this state's era. */
+  /** Loads the pixel-art pages for this tier (call once, before the first sync). */
+  async init(base = `${import.meta.env.BASE_URL}art`): Promise<void> {
+    // Low and Medium draw the chunky grid (one art pixel = 1.33 world units, about 2 CSS px at play zoom);
+    // High draws the finer grid. Either way the whole scene shares one pixel size.
+    this.art = await loadPixelArt(base, this.cfg.tier === "high" ? "m" : "l", "colony");
+    const a = this.art;
+    this.flagTex = [0, 1, 2, 3].map((k) => a.get(`fx/flag/${k}`));
+    this.smokeTex = [0, 1, 2, 3, 4].map((k) => a.get(`fx/smoke/${k}`));
+    this.gullTex = [0, 1, 2, 3].map((k) => a.get(`fx/gull/${k}`));
+    this.grassTex = [0, 1, 2, 3].map((g) => [0, 1, 2].map((k) => a.get(`fx/grass/${g}/${k}`)));
+  }
+  /** World units per art pixel at this tier. */
+  get artUnit(): number {
+    return this.art.u;
+  }
+  private lookup(n: string): Texture {
+    if (this.art.has(n)) return this.art.get(n);
+    if (this.proc?.has(n)) return this.proc.get(n);
+    throw new Error(`missing frame ${n}`);
+  }
+  /** Snap a world coordinate to the art-pixel lattice so every sprite shares one pixel grid. */
+  private snap(v: number): number {
+    const u = this.art.u;
+    return Math.round(v / u) * u;
+  }
+
+  /** Per era: the pixel pages plus a procedural atlas for whatever they do not draw yet. */
   private ensureAtlas(st: IslandState): void {
     const era = eraOf(st.tier);
     if (era === this.era) return;
     this.releaseAtlasSprites();
-    const old = this.tex;
+    this.art.alias(era);
+    void this.art.ensureEra(era);
+    const old = this.proc;
     const s = this.cfg.atlas === "low" ? 1 : 2;
-    this.atlas = buildAtlas(era, s);
+    this.atlas = buildAtlas(era, s, undefined, 2048, (n) => !this.art.has(n));
+    this.proc = this.atlas.frames.size ? toTextures(this.atlas) : null;
+    if (!this.proc) this.atlas = null;
     this.thumbs.clear();
-    this.tex = toTextures(this.atlas);
     this.era = era;
-    if (!this.grain) {
-      this.grain = new TilingSprite({ texture: this.tex.grain, width: this.app.screen.width, height: this.app.screen.height });
-      this.grain.alpha = 0.07;
-      this.grain.eventMode = "none";
-      this.overlay.addChild(this.grain, this.wash);
-    } else this.grain.texture = this.tex.grain;
     if (old) this.retired.push(old);
   }
   /** Drop every sprite that still holds an atlas texture before the sources are destroyed. */
   private releaseAtlasSprites(): void {
     this.clearFx();
-    if (this.era) {
-      this.smoke.removeFromParent();
-      this.smoke.destroy();
-      this.smoke = new ParticleContainer({ dynamicProperties: { position: true, color: true, scale: true } });
-      this.smoke.zIndex = 80;
-      this.objects.addChild(this.smoke);
-    }
     for (const w of this.walkers) w.sp.destroy();
     this.walkers = [];
     for (const b of this.boats) b.destroy();
     this.boats = [];
     this.boatBase.clear();
-    this.foamBits = [];
     for (const s of this.sprites.values()) s.destroy();
     this.sprites.clear();
     this.ground.removeChildren().forEach((c) => c.destroy());
+    this.shore.removeChildren().forEach((c) => c.destroy());
+    this.clearSea();
+  }
+  private clearSea(): void {
     this.sea.removeChildren().forEach((c) => c.destroy());
+    this.sky.removeChildren().forEach((c) => c.destroy());
+    this.seaTile = this.glintTile = null;
+    this.crests = [];
+    this.tufts.forEach((t) => t.sp.destroy());
+    this.tufts = [];
+    this.gulls = [];
+    this.clouds = [];
+    this.seaStep = -1;
   }
 
   /** Re-lays the island for the state. Cheap enough to call after every command. */
@@ -157,18 +234,21 @@ export class IslandView {
     this.lastState = st;
     this.ensureAtlas(st);
     const prevR = this.layout?.r;
-    this.layout = layoutIsland(st, opts);
+    this.layout = layoutIsland(st, { ...opts, pixel: (f) => this.art.has(f), shoreFrame: (m) => this.art.shoreFrame(m) });
     if (prevR !== this.layout.r || this.ground.children.length === 0) {
       this.ground.removeChildren().forEach((c) => c.destroy());
-      this.drawSea();
+      this.shore.removeChildren().forEach((c) => c.destroy());
+      this.addAll(this.ground, this.layout.ground);
+      this.addAll(this.shore, this.layout.shore);
+      this.drawSea(st);
     }
-    if (!this.ground.children.length) this.addAll(this.ground, this.layout.ground);
     // ground variant changes (grey land) without rebuilding: swap textures
     const gs = this.ground.children as Sprite[];
     this.layout.ground.forEach((p, i) => {
       if (gs[i]) gs[i].texture = this.tex.get(p.frame);
     });
     const keep = new Set<string>();
+    this.swayers = [];
     for (const p of [...this.layout.ring, ...this.layout.things]) {
       const id = `${p.key ?? p.frame}@${p.x},${p.y}`;
       keep.add(id);
@@ -182,6 +262,7 @@ export class IslandView {
       sp.scale.set(p.scale ?? 1);
       sp.alpha = 1;
       sp.zIndex = p.z;
+      if (this.art.has(`${p.frame}/s1`)) this.swayers.push({ sp, frames: [this.tex.get(p.frame), this.art.get(`${p.frame}/s1`), this.art.get(`${p.frame}/s2`)], ph: Math.abs(Math.round(p.x * 7 + p.y * 3)) % 3 });
     }
     for (const [id, sp] of this.sprites)
       if (!keep.has(id)) {
@@ -201,18 +282,63 @@ export class IslandView {
     }
   }
 
-  private drawSea(): void {
-    this.sea.removeChildren().forEach((c) => c.destroy());
-    this.foamBits = [];
-    const b = this.layout.bounds;
-    for (let n = 0; n < 14; n++) {
-      const f = new Sprite(this.tex.get("fx/foam"));
-      const a = (n / 14) * Math.PI * 2;
-      const bx = b.x + b.w / 2 + Math.cos(a) * b.w * 0.55, by = b.y + b.h / 2 + Math.sin(a) * b.h * 0.55;
-      f.position.set(bx, by);
-      f.alpha = 0.7;
-      this.sea.addChild(f);
-      this.foamBits.push({ sp: f, bx, by, ph: a });
+  /** The sea: one tiling sprite sized to the screen, the raid's crest pool, gulls, cloud shadows, grass tufts. */
+  private drawSea(st: IslandState): void {
+    this.clearSea();
+    const b = this.layout.fitBounds;
+    this.seaTile = new TilingSprite({ texture: this.art.calm[0], width: 64, height: 64 });
+    this.seaTile.eventMode = "none";
+    this.sea.addChild(this.seaTile);
+    if (this.amb.glint) {
+      this.glintTile = new TilingSprite({ texture: this.art.glint, width: 64, height: 64 });
+      this.glintTile.alpha = 0.55;
+      this.glintTile.eventMode = "none";
+      this.sea.addChild(this.glintTile);
+    }
+    for (let k = 0; k < this.amb.crests; k++) {
+      const sp = new Sprite(this.art.get(`fx/crest/${k % 4}`));
+      sp.visible = false;
+      this.sea.addChild(sp);
+      this.crests.push({ sp, x: 0, y: 0, age: 0, life: 1, on: false });
+    }
+    gullSpecs(this.amb.gulls, b.y + b.h * 0.05, b.h * 0.55).forEach((spec, k) => {
+      const sp = new Sprite(this.art.get(`fx/gull/${k % 4}`));
+      this.sky.addChild(sp);
+      this.gulls.push({ sp, spec });
+    });
+    for (let k = 0; k < this.amb.clouds; k++) {
+      const sp = new Sprite(this.art.get(`fx/cloud/${k % 2}`));
+      sp.alpha = 0.5;
+      this.sky.addChild(sp);
+      this.clouds.push({ sp, x: b.x + b.w * (0.2 + 0.5 * k), y: b.y + b.h * (0.3 + 0.25 * k), v: -(3 + k) });
+    }
+    this.scatterTufts(st);
+    this.stepSea(true);
+    this.applyCamera();
+  }
+
+  /** Grass tufts on the open meadow, placed once per layout by cell hash (never on lots, ring, gate or tent). */
+  private scatterTufts(st: IslandState): void {
+    const r = this.layout.r;
+    const coast = coastFor(r);
+    const cand: { i: number; j: number; h: number }[] = [];
+    for (const { i, j } of coast.cells) {
+      const m = Math.max(Math.abs(i), Math.abs(j));
+      if (m < r + 2 || `${i},${j}` in st.lots) continue;
+      if (Math.abs(i - (r + 2)) <= 1 && Math.abs(j - (-r + 1)) <= 1) continue; // tent
+      if (j === 0 && i >= r + 1) continue; // gate and road
+      if (coast.sandy(i, j)) continue;
+      cand.push({ i, j, h: ((i * 73856093) ^ (j * 19349663)) >>> 0 });
+    }
+    cand.sort((a, b) => (a.h % 977) - (b.h % 977));
+    for (const c of cand.slice(0, this.amb.tufts)) {
+      const g = c.h % 4, o = (c.h >>> 4) % 17, q = (c.h >>> 9) % 9;
+      const f = cellFront(c.i, c.j);
+      const sp = new Sprite(this.art.get(`fx/grass/${g}/1`));
+      sp.position.set(this.snap(f.x + (o - 8) * 2.2), this.snap(f.y - TH / 2 + (q - 4) * 1.6));
+      sp.zIndex = depth(c.i, c.j, 1);
+      this.objects.addChild(sp);
+      this.tufts.push({ sp, g, ph: (c.h >>> 13) % 3 });
     }
   }
 
@@ -274,18 +400,15 @@ export class IslandView {
   fit(reset: boolean): void {
     const b = this.layout?.fitBounds;
     if (!b) return;
-    const sw = this.app.screen.width, sh = this.app.screen.height;
-    if (this.grain) {
-      this.grain.width = sw;
-      this.grain.height = sh;
-    }
+    const pb = this.layout.playBounds;
     const a = this.area();
     this.fitZoom = Math.min(a.w / b.w, a.h / b.h);
-    if (reset || this.zoom < this.fitZoom) {
-      // Play starts zoomed in so buildings and people read; pinch out to see the whole island.
-      this.zoom = this.fitZoom * PLAY_ZOOM;
-      this.cx = b.x + b.w / 2;
-      this.cy = b.y + b.h / 2;
+    this.ringFit = Math.min(a.w / pb.w, a.h / pb.h);
+    if (reset || this.rawZoom < this.fitZoom) {
+      // Play starts zoomed in so buildings and people read; pinch out to see the whole island and its sea.
+      this.rawZoom = this.ringFit * PLAY_ZOOM;
+      this.cx = pb.x + pb.w / 2;
+      this.cy = pb.y + pb.h / 2;
     }
     this.apply();
   }
@@ -337,17 +460,41 @@ export class IslandView {
   }
   private apply(): void {
     const b = this.layout.bounds;
-    this.zoom = Math.max(this.fitZoom, Math.min(this.fitZoom * 5, this.zoom));
+    this.rawZoom = Math.max(this.fitZoom, Math.min(Math.max(this.fitZoom, this.ringFit * 5), this.rawZoom));
+    this.zoom = this.snapZoom(this.rawZoom);
     // keep the island on screen
     this.cx = Math.max(b.x, Math.min(b.x + b.w, this.cx));
     this.cy = Math.max(b.y, Math.min(b.y + b.h, this.cy));
     this.world.scale.set(this.zoom);
     const a = this.area();
-    this.world.position.set(a.x + a.w / 2 - this.cx * this.zoom, a.y + a.h / 2 - this.cy * this.zoom);
+    const res = this.app.renderer.resolution;
+    // whole device pixels, so the art-pixel grid never straddles a screen pixel
+    this.world.position.set(Math.round((a.x + a.w / 2 - this.cx * this.zoom) * res) / res, Math.round((a.y + a.h / 2 - this.cy * this.zoom) * res) / res);
+    this.applyCamera();
   }
-  zoomAt(sx: number, sy: number, k: number): void {
+  /** Whole device pixels per art pixel (pixel-exact, no shimmer); only the far overview may go below 1:1. */
+  private snapZoom(z: number): number {
+    const per = this.app.renderer.resolution * this.art.u;
+    const d = z * per;
+    return d < 1 ? z : Math.round(d) / per;
+  }
+  /** The sea tiles follow the screen, anchored to world 0 so the pattern never swims when panning. */
+  private applyCamera(): void {
+    const z = this.zoom;
+    const x = -this.world.x / z, y = -this.world.y / z;
+    const w = this.app.screen.width / z + 2, h = this.app.screen.height / z + 2;
+    for (const t of [this.seaTile, this.glintTile]) {
+      if (!t) continue;
+      t.position.set(x, y);
+      t.width = w;
+      t.height = h;
+      t.tilePosition.set(-x + (t === this.glintTile ? this.glintShift : 0), -y);
+    }
+  }
+  private glintShift = 0;
+  zoomAt(sx: number, sy: number, k: number, fromDrawn = false): void {
     const wx = (sx - this.world.x) / this.zoom, wy = (sy - this.world.y) / this.zoom;
-    this.zoom *= k;
+    this.rawZoom = (fromDrawn ? this.zoom : this.rawZoom) * k;
     this.apply();
     const nx = (sx - this.world.x) / this.zoom, ny = (sy - this.world.y) / this.zoom;
     this.cx += wx - nx;
@@ -363,7 +510,7 @@ export class IslandView {
     this.pointers.set(e.pointerId, { x: e.global.x, y: e.global.y });
     const pts = [...this.pointers.values()];
     const dist = pts.length > 1 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : 0;
-    this.dragFrom = { x: e.global.x, y: e.global.y, cx: this.cx, cy: this.cy, dist, zoom: this.zoom, moved: false };
+    this.dragFrom = { x: e.global.x, y: e.global.y, cx: this.cx, cy: this.cy, dist, zoom: this.rawZoom, moved: false };
   }
   private move(e: FederatedPointerEvent): void {
     if (!this.pointers.has(e.pointerId) || !this.dragFrom) return;
@@ -373,7 +520,7 @@ export class IslandView {
     if (pts.length > 1 && d.dist > 0) {
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       const mx = (pts[0].x + pts[1].x) / 2, my = (pts[0].y + pts[1].y) / 2;
-      this.zoomAt(mx, my, (d.zoom * (dist / d.dist)) / this.zoom);
+      this.zoomAt(mx, my, (d.zoom * (dist / d.dist)) / this.rawZoom);
       d.moved = true;
       return;
     }
@@ -407,7 +554,7 @@ export class IslandView {
     if (key === "tent") return this.onTapTent();
     if (this.lotScreenWidth() < 34) {
       // too small to aim at: zoom toward the tap first (FINAL_PLAN_BT.md §6 tap-to-zoom)
-      this.zoomAt(sx, sy, 48 / this.lotScreenWidth());
+      this.zoomAt(sx, sy, 48 / this.lotScreenWidth(), true);
       return;
     }
     if (key) this.onTapLot(key);
@@ -419,7 +566,7 @@ export class IslandView {
     return { x: this.world.x + p.x * this.zoom, y: this.world.y + (p.y - TH / 2) * this.zoom };
   }
   zoomToLots(): void {
-    this.zoom = Math.max(this.zoom, 56 / TW);
+    this.rawZoom = Math.max(this.zoom, 56 / TW);
     this.apply();
   }
   highlight(key: string | null): void {
@@ -474,7 +621,7 @@ export class IslandView {
         tw.done?.();
       }
     }
-    if (this.frozen) return;
+    if (this.frozen || !this.layout) return;
     if (this.glide && !this.dragFrom) {
       const k = Math.min(1, dt * 6);
       const px = this.cx, py = this.cy;
@@ -540,7 +687,7 @@ export class IslandView {
         if (w.wait <= 0) w.mode = "idle";
       } else if (w.mode === "idle") this.pose(w, "idle", dt, 2);
       else this.followPath(w, dt);
-      w.sp.position.set(w.x, w.y);
+      w.sp.position.set(this.snap(w.x), this.snap(w.y));
       w.sp.zIndex = Math.round(((w.y - TH) / (TH / 2)) * 100) + 50;
     }
     for (const [id, sp] of this.sprites)
@@ -590,62 +737,167 @@ export class IslandView {
   private clearFx(): void {
     for (const f of this.flags) f.sp.destroy();
     this.flags = [];
-    for (const s of this.puffs) this.smoke.removeParticle(s.p);
+    for (const p of this.puffs) p.sp.destroy();
     this.puffs = [];
     this.hearths = [];
+    this.swayers = [];
+  }
+  /** World position of a pixel anchor (chimney, flag pole) on a placed model. */
+  private anchorOf(t: Placed, kind: "chimney" | "pole"): { x: number; y: number } | null {
+    const base = t.frame.replace(/^grey\//, "");
+    const a = this.art.anchor(base)?.[kind];
+    if (!a) return null;
+    const o = this.art.offset(t.frame, a);
+    const k = t.scale ?? 1;
+    return { x: t.x + o.x * k, y: t.y + o.y * k };
   }
   private syncFx(): void {
     this.hearths = [];
-    for (const t of this.layout.things) if (t.frame.includes("/cottage/")) this.hearths.push({ x: t.x - 6, y: t.y - 30 });
+    for (const t of this.layout.things) {
+      if (!t.frame.includes("/cottage/")) continue;
+      this.hearths.push(this.anchorOf(t, "chimney") ?? { x: t.x - 6, y: t.y - 30 });
+    }
     for (const f of this.flags) f.sp.destroy();
     this.flags = [];
-    if (!this.tex.has("fx/flag/0")) return;
+    if (!this.art.has("fx/flag/0")) return;
     for (const t of this.layout.things) {
       if (!/\/tower\/|\/trade\/|\/lantern\/|^tent$/.test(t.frame.replace(/^grey\//, ""))) continue;
-      const sp = new Sprite(this.tex.get("fx/flag/0"));
+      const sp = new Sprite(this.art.get("fx/flag/0"));
+      const at = this.anchorOf(t, "pole");
       const lift = t.frame.includes("tent") ? 40 : t.frame.includes("tower") ? 50 : 30;
-      sp.position.set(t.x + (t.frame.includes("trade") ? -12 : 6), t.y - lift);
+      sp.position.set(at ? at.x : t.x + (t.frame.includes("trade") ? -12 : 6), at ? at.y : t.y - lift);
       sp.zIndex = t.z + 3;
       this.objects.addChild(sp);
-      this.flags.push({ sp, ph: Math.random() * 3 });
+      this.flags.push({ sp, ph: (t.x * 0.013) % 4 });
     }
   }
-  private stepWorldFx(dt: number): void {
-    for (const f of this.foamBits) {
-      f.ph += dt * 0.45;
-      f.sp.position.set(f.bx + Math.sin(f.ph) * 7, f.by + Math.cos(f.ph * 0.8) * 3);
+  private emitPuff(h: { x: number; y: number }): void {
+    let p = this.puffs.find((q) => !q.on);
+    if (!p) {
+      if (this.puffs.length >= 24) return;
+      const sp = new Sprite(this.art.get("fx/smoke/0"));
+      sp.zIndex = 100000;
+      this.objects.addChild(sp);
+      p = { sp, life: 0, max: 1, vy: 0, x: 0, y: 0, on: false };
+      this.puffs.push(p);
     }
+    p.on = true;
+    p.life = 0;
+    p.max = 1.5 + this.rand() * 0.8;
+    p.vy = 11 + this.rand() * 7;
+    p.x = h.x;
+    p.y = h.y;
+    p.sp.visible = true;
+  }
+  private spawnCrest(c: Crest, initial: boolean): void {
+    const b = this.layout.fitBounds;
+    c.x = b.x + this.rand() * (b.w + 160);
+    c.y = b.y + this.rand() * (b.h + 60);
+    c.life = 5 + this.rand() * 3;
+    c.age = initial ? this.rand() * c.life : 0;
+    c.on = true;
+    c.sp.visible = true;
+  }
+  /** Rough water belongs to the raid only: crests roll in while it plays, then drain away. */
+  private setRaid(on: boolean): void {
+    this.raidOn = on;
+    if (on) for (const c of this.crests) this.spawnCrest(c, true);
+    this.stepSea(true);
+  }
+  get rough(): boolean {
+    return this.raidOn;
+  }
+  private stepSea(force: boolean): void {
+    if (!this.seaTile) return;
+    const state = seaState(this.raidOn);
+    const sps = seaStepsPerSecond(this.amb, state);
+    const step = sps === 0 ? 0 : Math.floor(this.clock * sps);
+    const key = step * 2 + (state === "rough" ? 1 : 0);
+    if (!force && key === this.seaStep) return;
+    this.seaStep = key;
+    const list = state === "rough" ? this.art.rough : this.art.calm;
+    this.seaTile.texture = list[step % list.length];
+    if (this.glintTile) {
+      this.glintShift = (step % 8) * 4 * this.art.u;
+      this.applyCamera();
+    }
+  }
+  private fxTick = -1;
+  private gullOut: GullPoseT = { x: 0, y: 0, vx: 0, vy: 0, flipX: false, frame: 0 };
+  private stepWorldFx(dt: number): void {
+    this.stepSea(false);
+    const tick = Math.floor(this.clock * 12);
+    const stepped = tick !== this.fxTick;
+    this.fxTick = tick;
     for (const b of this.boats) {
       if (!this.boatBase.has(b)) this.boatBase.set(b, b.y);
-      b.y = this.boatBase.get(b)! + Math.sin(this.clock * 2.2 + b.x * 0.05) * 1.7;
+      b.y = this.snap(this.boatBase.get(b)! + Math.sin(this.clock * 2.2 + b.x * 0.05) * 1.7);
     }
-    for (const f of this.flags) {
+    const flagTex = this.flagTex, smokeTex = this.smokeTex;
+    for (let i = 0; i < this.flags.length; i++) {
+      const f = this.flags[i];
       f.ph += dt * 6;
-      const fr = `fx/flag/${Math.floor(f.ph) % 3}`;
-      if (this.tex.has(fr)) f.sp.texture = this.tex.get(fr);
+      f.sp.texture = flagTex[Math.floor(f.ph) % flagTex.length];
     }
     this.emitT += dt;
-    if (this.emitT > 0.38 && this.tex.has("fx/smoke")) {
+    if (this.emitT > 0.38) {
       this.emitT = 0;
-      for (const h of this.hearths) {
-        if (this.puffs.length >= Math.min(40, this.cfg.particles)) break;
-        const tex = this.tex.has("fx/smoke/0") ? this.tex.get(`fx/smoke/${Math.floor(Math.random() * 3)}`) : this.tex.get("fx/smoke");
-        this.smoke.texture = tex;
-        const p = new Particle({ texture: tex, x: h.x, y: h.y, alpha: 0.85, scaleX: 0.65, scaleY: 0.65, anchorX: 0.5, anchorY: 0.8 });
-        this.smoke.addParticle(p);
-        this.puffs.push({ p, life: 0, max: 1.5 + Math.random() * 0.8, vy: 11 + Math.random() * 7 });
+      for (let i = 0; i < this.hearths.length; i++) this.emitPuff(this.hearths[i]);
+    }
+    for (let i = 0; i < this.puffs.length; i++) {
+      const s = this.puffs[i];
+      if (!s.on) continue;
+      s.life += dt;
+      if (s.life >= s.max) {
+        s.on = false;
+        s.sp.visible = false;
+        continue;
+      }
+      const u = s.life / s.max;
+      s.sp.texture = smokeTex[Math.min(smokeTex.length - 1, Math.floor(u * smokeTex.length))];
+      s.sp.position.set(this.snap(s.x + Math.sin(s.life * 2.4) * 6), this.snap(s.y - s.vy * s.life));
+      s.sp.alpha = u < 0.5 ? 0.9 : u < 0.8 ? 0.6 : 0.35;
+    }
+    if (!stepped) return;
+    const amb = this.amb;
+    if (amb.sway) {
+      for (let i = 0; i < this.tufts.length; i++) {
+        const t = this.tufts[i];
+        t.sp.texture = this.grassTex[t.g][(tick / 4 + t.ph) % 3 | 0];
+      }
+      for (let i = 0; i < this.swayers.length; i++) {
+        const w = this.swayers[i];
+        w.sp.texture = w.frames[(((tick / 5) | 0) + w.ph) % 3];
       }
     }
-    for (const s of this.puffs.slice()) {
-      s.life += dt;
-      s.p.y -= s.vy * dt;
-      s.p.x += Math.sin(s.life * 2.4) * 10 * dt;
-      s.p.alpha = Math.max(0, 1 - s.life / s.max);
-      s.p.scaleX = s.p.scaleY = 0.55 + s.life / s.max;
-      if (s.life >= s.max) {
-        this.smoke.removeParticle(s.p);
-        this.puffs.splice(this.puffs.indexOf(s), 1);
+    const b = this.layout.fitBounds;
+    for (let i = 0; i < this.crests.length; i++) {
+      const c = this.crests[i];
+      if (!c.on) continue;
+      c.age += 1 / 12;
+      if (c.age >= c.life) {
+        if (this.raidOn) this.spawnCrest(c, false);
+        else {
+          c.on = false;
+          c.sp.visible = false;
+          continue;
+        }
       }
+      c.sp.position.set(this.snap(c.x + WAVE_DIR.x * 20 * c.age), this.snap(c.y + WAVE_DIR.y * 20 * c.age));
+      c.sp.alpha = crestAlpha(c.age / c.life, this.raidOn);
+    }
+    for (let i = 0; i < this.gulls.length; i++) {
+      const g = this.gulls[i];
+      const p = gullPose(g.spec, this.clock, b.x, b.w, this.gullOut);
+      g.sp.position.set(this.snap(p.x), this.snap(p.y));
+      g.sp.scale.x = p.flipX ? -1 : 1;
+      g.sp.texture = this.gullTex[p.frame];
+    }
+    for (let i = 0; i < this.clouds.length; i++) {
+      const c = this.clouds[i];
+      c.x += c.v / 12;
+      if (c.x < b.x - 120) c.x = b.x + b.w + 40;
+      c.sp.position.set(this.snap(c.x), this.snap(c.y));
     }
   }
 
@@ -660,6 +912,14 @@ export class IslandView {
 
   /** The raid, played back from the already-resolved result. Resolves when the playback ends. */
   async playRaid(res: RaidResult): Promise<void> {
+    this.setRaid(true);
+    try {
+      await this.playRaidBeats(res);
+    } finally {
+      this.setRaid(false);
+    }
+  }
+  private async playRaidBeats(res: RaidResult): Promise<void> {
     const g = this.layout.gate;
     const reduced = prefersReducedMotion();
     const ghost = res.kind === "ghosts";
@@ -846,12 +1106,17 @@ export class IslandView {
   thumb(frame: string): string {
     let url = this.thumbs.get(frame);
     if (url) return url;
-    const f = this.atlas.frames.get(frame);
+    const px = this.art.thumb(frame);
+    if (px) {
+      this.thumbs.set(frame, px);
+      return px;
+    }
+    const f = this.atlas?.frames.get(frame);
     if (!f) return "";
     const c = document.createElement("canvas");
     c.width = f.w;
     c.height = f.h;
-    c.getContext("2d")!.drawImage(this.atlas.pages[f.page], f.x, f.y, f.w, f.h, 0, 0, f.w, f.h);
+    c.getContext("2d")!.drawImage(this.atlas!.pages[f.page], f.x, f.y, f.w, f.h, 0, 0, f.w, f.h);
     url = c.toDataURL();
     this.thumbs.set(frame, url);
     return url;
@@ -860,8 +1125,17 @@ export class IslandView {
     return this.era;
   }
 
-  stats(): { sprites: number; walkers: number; zoom: number; fitZoom: number } {
-    return { sprites: this.objects.children.length + this.ground.children.length, walkers: this.walkers.length, zoom: this.zoom, fitZoom: this.fitZoom };
+  stats(): { sprites: number; walkers: number; zoom: number; fitZoom: number; sea: string; gulls: number; crests: number; tier: string } {
+    return {
+      sprites: this.objects.children.length + this.ground.children.length + this.shore.children.length,
+      walkers: this.walkers.length,
+      zoom: this.zoom,
+      fitZoom: this.fitZoom,
+      sea: seaState(this.raidOn),
+      gulls: this.gulls.length,
+      crests: this.crests.filter((c) => c.on).length,
+      tier: this.cfg.tier,
+    };
   }
 }
 

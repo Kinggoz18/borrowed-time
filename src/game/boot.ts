@@ -50,7 +50,10 @@ export async function bootGame(): Promise<void> {
     background: "#5e9a98",
   });
   host.appendChild(app.canvas);
+  // the world is pixel art: never let the browser smooth it when the canvas is scaled to the screen
+  app.canvas.style.imageRendering = "pixelated";
   const view = new IslandView(app, cfg);
+  await view.init();
   const sfx = new Sfx();
   const haptics = new Haptics();
   sfx.setMixer({ sound: settings.sound, music: settings.music, sfxVol: settings.sfxVol, musicVol: settings.musicVol });
