@@ -5,7 +5,8 @@
  */
 import { BASE_DAY } from "../core/rules";
 import { CommandError, dispatch, newData, type Command, type GameData, type GameEvent } from "../core/game";
-import { decodeSave, encodeSave, defaultMeta, SAVE_KEY, type SaveMeta } from "../core/save";
+import { noonHour } from "../core/hints";
+import { dayKey, decodeSave, encodeSave, defaultMeta, SAVE_KEY, type SaveMeta } from "../core/save";
 import type { IslandState } from "../core/state";
 import type { KV } from "../platform/storage";
 
@@ -40,7 +41,9 @@ export class Session {
   }
   static async load(kv: KV, now?: () => number): Promise<Session | null> {
     const f = decodeSave(await kv.get(SAVE_KEY));
-    return f ? new Session(f.data, f.meta, kv, now) : null;
+    if (!f) return null;
+    markNoonIfPast(f.meta, f.data.state);
+    return new Session(f.data, f.meta, kv, now);
   }
 
   get state(): IslandState {
@@ -88,5 +91,28 @@ export class Session {
     this.meta.savedAt = this.now();
     this.lastSaveOk = await this.kv.set(SAVE_KEY, encodeSave(this.data, this.meta));
     return this.lastSaveOk;
+  }
+
+  /** True once per day when the clock reaches the noon hour. */
+  shouldNoonCall(): boolean {
+    const st = this.state;
+    if (st.phase !== "day") return false;
+    if (st.hour !== noonHour(st.dayLen)) return false;
+    return dayKey(st.season, st.day) !== this.meta.calledDay;
+  }
+
+  /** Records the call and drops Rest to 1× (same as dusk). */
+  recordNoonCall(): void {
+    const st = this.state;
+    this.meta.calledDay = dayKey(st.season, st.day);
+    this.speed = 1;
+    void this.save();
+  }
+}
+
+/** Resuming after the noon hour must not replay the call. */
+export function markNoonIfPast(meta: SaveMeta, st: IslandState): void {
+  if (st.phase === "day" && st.hour >= noonHour(st.dayLen)) {
+    meta.calledDay = dayKey(st.season, st.day);
   }
 }

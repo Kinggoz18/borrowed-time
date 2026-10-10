@@ -3,7 +3,9 @@ import { verify } from "../src/core/game";
 import { SAVE_KEY } from "../src/core/save";
 import { hashState } from "../src/core/snapshot";
 import { BASE_DAY } from "../src/core/rules";
-import { BASE_HOUR_MS, FAST, GAME_SPEED, HOUR_MS, Session } from "../src/game/session";
+import { noonHour } from "../src/core/hints";
+import { dayKey } from "../src/core/save";
+import { BASE_HOUR_MS, FAST, GAME_SPEED, HOUR_MS, markNoonIfPast, Session } from "../src/game/session";
 import { MemoryKV, type KV } from "../src/platform/storage";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -61,6 +63,26 @@ describe("session", () => {
     expect(s.do({ t: "hour" })).not.toBeNull();
     expect(await s.save()).toBe(false);
     expect(s.lastSaveOk).toBe(false);
+  });
+  it("noon call fires once per day at the noon hour", () => {
+    const s = Session.fresh(4, new MemoryKV(), "Test");
+    const nh = noonHour(s.state.dayLen);
+    s.update(HOUR_MS * (nh - 0.5));
+    expect(s.shouldNoonCall()).toBe(false);
+    s.update(HOUR_MS);
+    expect(s.shouldNoonCall()).toBe(true);
+    s.recordNoonCall();
+    expect(s.shouldNoonCall()).toBe(false);
+    expect(s.meta.calledDay).toBe(dayKey(s.state.season, s.state.day));
+    expect(s.speed).toBe(1);
+  });
+  it("markNoonIfPast prevents a repeat after load", () => {
+    const s = Session.fresh(4, new MemoryKV(), "Test");
+    const nh = noonHour(s.state.dayLen);
+    while (s.state.hour < nh) s.do({ t: "hour" });
+    expect(s.shouldNoonCall()).toBe(true);
+    markNoonIfPast(s.meta, s.state);
+    expect(s.shouldNoonCall()).toBe(false);
   });
   it("a corrupt save loads as null (start fresh)", async () => {
     const kv = new MemoryKV();
