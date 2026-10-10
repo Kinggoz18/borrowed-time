@@ -10,6 +10,7 @@ import { buildingFrame, groundFrame } from "../../art/island/atlas";
 import { ERA_TYPES, LOOKS_PER_ERA } from "../../art/island/buildings";
 import type { Era } from "../../art/island/palette";
 import type { RingPiece } from "../../art/island/scenery";
+import { coastFor } from "./coast";
 
 /** Buildings draw a little larger than their lot so they read on a phone (owner feedback). */
 export const BUILDING_SCALE = 1.3;
@@ -40,12 +41,16 @@ export interface IslandLayout {
   era: Era;
   r: number;
   ground: Placed[];
+  /** stone-edged shore overlays on the coast cells (needs a shore lookup, see LayoutOpts) */
+  shore: Placed[];
   ring: Placed[];
   things: Placed[];
   /** world bounds of the land, for the camera clamp */
   bounds: { x: number; y: number; w: number; h: number };
-  /** what the camera fits on screen: the ring and a strip of shore */
+  /** what the camera fits at minimum zoom: the whole island and a margin of sea */
   fitBounds: { x: number; y: number; w: number; h: number };
+  /** the ring and a strip of shore: the play camera starts around this */
+  playBounds: { x: number; y: number; w: number; h: number };
   /** Hesper's tent, east shore outside the ring */
   tent: { x: number; y: number };
   gate: { x: number; y: number };
@@ -82,29 +87,41 @@ export function ringCells(r: number): { i: number; j: number; piece: RingPiece |
   return out;
 }
 
-export function layoutIsland(st: IslandState, opts: { dusk?: boolean } = {}): IslandLayout {
+export interface LayoutOpts {
+  dusk?: boolean;
+  /** frames that are pixel art: drawn at lot size already (the procedural stand-ins are scaled up) */
+  pixel?: (frame: string) => boolean;
+  /** shore overlay frame for a neighbour mask (null: nothing to draw) */
+  shoreFrame?: (mask: number) => string | null;
+}
+
+export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayout {
   const era = eraOf(st.tier);
   const r = radius(st.tier);
   const grey = E.greySet(st);
   const { owner, size } = E.claims(st);
   const roadOn = !!st.road;
   const ground: Placed[] = [];
+  const shore: Placed[] = [];
   const things: Placed[] = [];
-  const S = r + 3;
-  for (let i = -S; i <= S; i++)
-    for (let j = -S; j <= S; j++) {
-      const m = Math.max(Math.abs(i), Math.abs(j));
-      const h = hash(i, j);
-      if (m === S && h < 0.55) continue; // a ragged shore
-      const key = `${i},${j}`;
-      const isLot = key in st.lots;
-      let kind = m >= r + 2 ? "sand" : isLot ? "lot" : "grass";
-      if (isLot && st.lots[key]?.type === "field") kind = "plot";
-      if (isLot && roadOn && (i === 0 || j === 0) && st.lots[key] === null && !owner[key]) kind = "road";
-      if (m === r + 1 && i === r + 1 && j === 0 && roadOn) kind = "road";
-      const p = cellFront(i, j);
-      ground.push({ frame: groundFrame(era, kind, Math.floor(h * 3), isLot && grey.has(key)), x: p.x, y: p.y, z: depth(i, j), key: isLot ? key : undefined });
-    }
+  const coast = coastFor(r);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const { i, j } of coast.cells) {
+    const m = Math.max(Math.abs(i), Math.abs(j));
+    const h = hash(i, j);
+    const key = `${i},${j}`;
+    const isLot = key in st.lots;
+    let kind = m >= r + 2 ? (coast.sandy(i, j) ? "sand" : "grass") : isLot ? "lot" : "grass";
+    if (isLot && st.lots[key]?.type === "field") kind = "plot";
+    if (isLot && roadOn && (i === 0 || j === 0) && st.lots[key] === null && !owner[key]) kind = "road";
+    if (m === r + 1 && i === r + 1 && j === 0 && roadOn) kind = "road";
+    const p = cellFront(i, j);
+    x0 = Math.min(x0, p.x - TW / 2); x1 = Math.max(x1, p.x + TW / 2);
+    y0 = Math.min(y0, p.y - TH); y1 = Math.max(y1, p.y);
+    ground.push({ frame: groundFrame(era, kind, Math.floor(h * 3), isLot && grey.has(key)), x: p.x, y: p.y, z: depth(i, j), key: isLot ? key : undefined });
+    const sf = opts.shoreFrame?.(coast.mask(i, j));
+    if (sf) shore.push({ frame: sf, x: p.x, y: p.y - TH / 2, z: depth(i, j) });
+  }
   for (const [key, b] of Object.entries(st.lots)) {
     if (!b) continue;
     const [i, j] = kij(key);
@@ -114,8 +131,9 @@ export function layoutIsland(st: IslandState, opts: { dusk?: boolean } = {}): Is
     // a 2×2 / 3×3 claim extends behind the owner lot: centre the sprite on the footprint
     const cx = p.x, cy = p.y - ((n - 1) * TH) / 2;
     // fields are a flush ground decal: do not scale them past the lot (A6)
-    const scale = b.type === "field" ? n : n * BUILDING_SCALE;
-    things.push({ frame: buildingFrame(era, frameType, stage, grey.has(key)), x: cx, y: cy + ((n - 1) * TH) / 2, z: depth(i, j, 10), key, scale });
+    const frame = buildingFrame(era, frameType, stage, grey.has(key));
+    const scale = b.type === "field" || opts.pixel?.(frame) ? n : n * BUILDING_SCALE;
+    things.push({ frame, x: cx, y: cy + ((n - 1) * TH) / 2, z: depth(i, j, 10), key, scale });
   }
   const g = cellFront(0, 0);
   things.push({ frame: "gnomon", x: g.x, y: g.y, z: depth(0, 0, 10), key: "0,0" });
@@ -132,19 +150,21 @@ export function layoutIsland(st: IslandState, opts: { dusk?: boolean } = {}): Is
   things.push({ frame: "tent", x: tc.x, y: tc.y, z: depth(r + 2, -r + 1, 10) });
   // Hesper waits at her tent flap with the ledger
   things.push({ frame: "p/hesper/0", x: tc.x - 30, y: tc.y + 10, z: depth(r + 2, -r + 1, 11) });
-  const top = cellFront(-S, -S), bot = cellFront(S, S), left = cellFront(-S, S), right = cellFront(S, -S);
   const gate = cellFront(r + 1, 0);
-  // fit the ring edge to edge: the island fills the phone's width (owner feedback)
+  // the play camera frames the ring edge to edge; the minimum zoom shows the whole island and its sea
   const F = r + 1;
   const ft = cellFront(-F, -F), fb = cellFront(F, F), fl = cellFront(-F, F), fr = cellFront(F, -F);
+  const sea = 90;
   return {
-    fitBounds: { x: fl.x - TW / 2 + 8, y: ft.y - TH - 50, w: fr.x - fl.x + TW - 16, h: fb.y - ft.y + TH + 50 },
+    playBounds: { x: fl.x - TW / 2 + 8, y: ft.y - TH - 50, w: fr.x - fl.x + TW - 16, h: fb.y - ft.y + TH + 50 },
+    fitBounds: { x: x0 - sea, y: y0 - sea, w: x1 - x0 + 2 * sea, h: y1 - y0 + 2 * sea },
     era,
     r,
     ground,
+    shore,
     ring,
     things,
-    bounds: { x: left.x - TW / 2, y: top.y - TH - 80, w: right.x - left.x + TW, h: bot.y - top.y + TH + 80 },
+    bounds: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 },
     tent: tc,
     gate,
   };
