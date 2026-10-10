@@ -273,3 +273,6 @@ button { font: inherit; color: inherit; }
 .sheet.keeper .sheet-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; align-items: start; }
 .sheet.keeper .sheet-body h3 { margin-top: 4px; }
 .sheet.keeper .opt { min-height: 56px; }
+.build-group { margin: 0 0 6px; }
+.build-group-title { font-family: var(--serif); font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); margin: 12px 0 2px; padding-bottom: 3px; border-bottom: 2px solid var(--ink); }
+.next-era { font-style: italic; margin-top: 10px; }

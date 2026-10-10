@@ -19,6 +19,7 @@ import type { Cue, Haptics, Sfx } from "../platform/sfx";
 import { applyOrientation } from "../platform/orientation";
 import { BAND_WORD, BLURB, HIDDEN_TITLE, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
 import { h, icon, type Child } from "./dom";
+import { nextEraLine, visibleGroups } from "./buildMenu";
 import { INTRO_CAMERA, runIntro } from "./intro";
 
 export interface UiDeps {
@@ -461,15 +462,14 @@ export class GameUI {
     this.selected = key ?? null;
     this.d.view.highlight(key ?? null);
     const lot = key ?? undefined;
-    const rows = BUILD_ORDER.filter((t) => (B[t].tier ?? 0) <= st.tier + 1).map((t) => {
+    const buildRow = (t: BType): HTMLElement => {
       const b = B[t];
       const c = E.cost(t, 0, st.L);
-      const locked = (b.tier ?? 0) > st.tier;
       const have = b.glob ? (st[b.glob] ? 1 : 0) : E.countOf(st, t);
       const max = COUNT[t][st.tier];
       const builtGlob = b.glob && st[b.glob];
-      const ok = !locked && !builtGlob && E.canBuild(st, b.glob ? undefined : lot ?? safest(st), t);
-      const why = locked ? `Opens at ${TIERS[b.tier!].name}` : builtGlob ? "Tap the ring or Roads in Build to upgrade" : have >= max ? (b.one ? "Built" : `${have}/${max} built`) : b.credit ? (st.debt + c > E.limit(st) ? "Not enough credit" : "") : st.hours < c ? `Need ${Math.ceil(c - st.hours)} more Hours` : !b.glob && !lot && !safest(st) ? "No free lot" : "";
+      const ok = !builtGlob && E.canBuild(st, b.glob ? undefined : lot ?? safest(st), t);
+      const why = builtGlob ? "Tap the ring or Roads in Build to upgrade" : have >= max ? (b.one ? "Built" : `${have}/${max} built`) : b.credit ? (st.debt + c > E.limit(st) ? "Not enough credit" : "") : st.hours < c ? `Need ${Math.ceil(c - st.hours)} more Hours` : !b.glob && !lot && !safest(st) ? "No free lot" : "";
       const era = this.d.view.currentEra as "colony" | "village";
       const frame = t === "palisade" ? `ring/0/segA` : t === "road" ? `g/${era}/road/0` : buildingFrame(era, lookFor(era, t, 0).frameType, 0);
       return h(
@@ -489,7 +489,10 @@ export class GameUI {
           h("small", {}, b.credit ? "on credit" : "Hours"),
         ),
       );
-    });
+    };
+    const groups = visibleGroups(st.tier, BUILD_ORDER).map((g) => h("section", { class: "build-group", "data-group": g.id }, h("h3", { class: "build-group-title" }, g.title), ...g.types.map(buildRow)));
+    const next = nextEraLine(st.tier, BUILD_ORDER);
+    const rows: Child[] = [...groups, next ? h("p", { class: "sub next-era", "data-next-era": "" }, next) : null];
     const el = this.sheet(key ? "Build here" : "Build", [h("p", { class: "sub" }, key ? "Pick what goes on this lot." : "New buildings go on the safest free lot."), ...rows]);
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "build";
     this.d.view.setBuildOpen(true);
