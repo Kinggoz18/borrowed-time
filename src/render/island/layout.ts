@@ -132,6 +132,9 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
   const isSand = (i: number, j: number): boolean => Math.max(Math.abs(i), Math.abs(j)) >= physRadius(r) + 2 && coast.sandy(i, j);
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   const PR = physRadius(r);
+  const lms = landmarksFor(st.tier, coast);
+  // plazas: the four corners round the gnomon's block and the junctions a landmark stands on; the other crossings are plain street
+  const plazas = new Set(["2,2", "2,-2", "-2,2", "-2,-2", ...lms.filter((l) => "cell" in l.def.at).map((l) => `${l.i},${l.j}`)]);
   const greyFrame = (era: Era, kind: string, v: number, g: boolean): string => groundFrame(era, kind, v, g);
   void greyFrame;
   for (const { i, j } of coast.cells) {
@@ -148,7 +151,8 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
     let frame: string | null = null;
     const gate = gateCell(r);
     const isGateRoad = i === gate.i && j === gate.j;
-    const sk = isGateRoad ? "street" : streetAt(i, j, r);
+    const sk0 = isGateRoad ? "street" : streetAt(i, j, r);
+    const sk = sk0 === "plaza" && !plazas.has(`${i},${j}`) ? "street" : sk0;
     if (sk) {
       const mask = streetMask(i, j, r);
       const paved = roadOn && era !== "colony";
@@ -188,7 +192,15 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
     const big = n > 1 ? `${buildingFrame(era, frameType, stage)}/f${n}` : "";
     const native = big !== "" && !!opts.pixel?.(big);
     if (native) frame = big;
-    const scale = native ? 1 : b.type === "field" || opts.pixel?.(frame) ? n : n * BUILDING_SCALE;
+    // a block of the same building is not one colour: roof and wall variants (r1, r2) by lot, where the era has them
+    if (!native && n === 1 && !grey.has(key) && b.type !== "field") {
+      const roll = hash(i * 7 + 3, j * 5 + 11);
+      const v = roll < 0.4 ? 0 : roll < 0.7 ? 1 : 2;
+      if (v && opts.pixel?.(`${frame}/r${v}`)) frame = `${frame}/r${v}`;
+    }
+    // the City's tallest spires are capped so its skyline stays calm
+    const cap = era === "city" && b.type === "tower" && n === 1 ? 0.86 : 1;
+    const scale = (native ? 1 : b.type === "field" || opts.pixel?.(frame) ? n : n * BUILDING_SCALE) * cap;
     things.push({ frame, x: cx, y: cy + ((n - 1) * TH) / 2, z: depth(i, j, 10), key, scale });
   }
   const has = (f: string): boolean => !!opts.pixel?.(f);
@@ -203,7 +215,7 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
     for (const key of Object.keys(st.lots)) {
       if (st.lots[key] !== null || owner[key]) continue;
       const [i, j] = kij(key);
-      const gp = lotGreens(i, j);
+      const gp = lotGreens(i, j, Math.max(Math.abs(i), Math.abs(j)) >= r - 1);
       if (gp && has(gp.frame)) things.push(at(phys(i), phys(j), gp.frame, 3, gp.dx, gp.dy));
     }
     // a lamp post at every junction once the streets are paved
@@ -211,7 +223,7 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
       for (const c of streetCells) if (c.kind === "street" && [1, 2, 4, 8].filter((b) => c.mask & b).length >= 3) things.push(at(c.i, c.j, `sc/lamp/${era}`, 8, -20, 8));
   }
   const landmarks: IslandLayout["landmarks"] = [];
-  for (const lm of landmarksFor(st.tier, coast)) {
+  for (const lm of lms) {
     const frame = landmarkFrame(lm.def.id);
     if (opts.pixel && !has(frame)) continue; // its era page has not streamed in yet
     const q = cellFront(lm.i, lm.j);

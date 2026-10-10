@@ -694,7 +694,10 @@ export class IslandView {
     if (this.frozen || !this.layout) return;
     if (this.zoomGlide !== null && !this.dragFrom) {
       this.rawZoom += (this.zoomGlide - this.rawZoom) * Math.min(1, dt * 2.2);
-      if (Math.abs(this.zoomGlide - this.rawZoom) < 0.002) (this.rawZoom = this.zoomGlide), (this.zoomGlide = null);
+      if (Math.abs(this.zoomGlide - this.rawZoom) < 0.002) {
+        this.rawZoom = this.zoomGlide;
+        this.zoomGlide = null;
+      }
       this.apply();
     }
     if (this.glide && !this.dragFrom) {

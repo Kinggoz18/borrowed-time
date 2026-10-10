@@ -52,7 +52,10 @@ describe("street grid", () => {
         const [i, j] = q.pop()!.split(",").map(Number);
         for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const k = `${i + a},${j + b}`;
-          if (keys.has(k) && !seen.has(k)) (seen.add(k), q.push(k));
+          if (keys.has(k) && !seen.has(k)) {
+            seen.add(k);
+            q.push(k);
+          }
         }
       }
       expect(seen.size).toBe(keys.size);

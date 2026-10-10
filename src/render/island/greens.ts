@@ -42,7 +42,7 @@ export function forestProps(coast: Coast, r: number, tent: { i: number; j: numbe
     if (j === 0 && i >= r + 1) continue; // the gate road
     const wood = fnoise(i / 3.2 + 3, j / 3.2 + 8);
     const roll = h2(i, j, 5);
-    const pDense = wood > 0.56 ? 0.78 : wood > 0.46 ? 0.3 : 0.06;
+    const pDense = wood > 0.6 ? 0.72 : wood > 0.5 ? 0.24 : 0.035;
     // thin the woods a little near the ring so the claim looks like clearing
     const clearing = m < r + 5 ? 0.6 : 1;
     const dx = Math.round((h2(i, j, 6) - 0.5) * 26), dy = Math.round((h2(i, j, 7) - 0.5) * 10);
@@ -52,9 +52,15 @@ export function forestProps(coast: Coast, r: number, tent: { i: number; j: numbe
   return out;
 }
 
-/** A bush or a clump of flowers on some empty lots, so open ground reads as a green pocket between the built blocks. */
-export function lotGreens(i: number, j: number): Prop | null {
+/**
+ * Green on empty lots, so open ground reads as a park or a garden between the built blocks (it goes
+ * the moment something is built there). Lots on the outer blocks get small trees as well: the town
+ * thins out towards its wall instead of ending in a solid edge.
+ */
+export function lotGreens(i: number, j: number, edge = false): Prop | null {
   const roll = h2(i, j, 21);
-  if (roll > 0.34) return null;
-  return { i, j, frame: `sc/bush/${Math.floor(h2(i, j, 22) * BUSH_VARIANTS)}`, dx: Math.round((h2(i, j, 23) - 0.5) * 20), dy: Math.round((h2(i, j, 24) - 0.5) * 8) };
+  const dx = Math.round((h2(i, j, 23) - 0.5) * 20), dy = Math.round((h2(i, j, 24) - 0.5) * 8);
+  if (edge && roll < 0.22) return { i, j, frame: `sc/tree/${Math.floor(h2(i, j, 25) * TREE_VARIANTS)}`, dx, dy };
+  if (roll > (edge ? 0.55 : 0.34)) return null;
+  return { i, j, frame: `sc/bush/${Math.floor(h2(i, j, 22) * BUSH_VARIANTS)}`, dx, dy };
 }

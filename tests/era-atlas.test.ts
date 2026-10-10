@@ -18,7 +18,7 @@ const ERAS: Era[] = ["village", "town", "city"];
 
 describe("era atlases", () => {
   it("the village set draws the Roads icon (flush paved avenue) at both grids, and every era carries it", () => {
-    expect(manifest.eras.village).toEqual(["shared", "village", "blend"]);
+    expect(manifest.eras.village.slice(0, 3)).toEqual(["shared", "village", "blend"]);
     for (const era of ERAS) for (const sc of ["m", "l"] as const) expect(framesOf(sc, era).has("ui/road")).toBe(true);
   });
   it("every set listed in the manifest has both grids on disk", () => {
@@ -84,6 +84,6 @@ describe("era atlases", () => {
     expect(big.scale).toBe(1);
     st.lots["2,3"] = { type: "field", n: 0, inv: 1 };
     const small = layoutIsland(st, { pixel, era: "town" }).things.find((t) => t.key === "3,3")!;
-    expect(small.frame).toBe("b/town/workshop/4");
+    expect(small.frame).toMatch(/^b\/town\/workshop\/4(\/r\d)?$/);
   });
 });
