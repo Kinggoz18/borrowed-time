@@ -78,6 +78,8 @@ export async function loadPixelArt(base: string, key: ArtScale, era: string, io:
   const bitmaps: { img: ImageBitmap | HTMLImageElement; raw: Map<string, RawFrame> }[] = [];
   const loaded = new Set<string>();
   const thumbs = new Map<string, string>();
+  /** alias frame name → the pixel page frame it points at (thumbnails are cut from the page by real name) */
+  const aliasOf = new Map<string, string>();
   const mk = (img: ImageBitmap | HTMLImageElement, repeat = false): ImageSource =>
     new ImageSource({ resource: img, resolution: s, scaleMode: "nearest", autoGenerateMipmaps: false, addressMode: repeat ? "repeat" : "clamp-to-edge" });
 
@@ -97,7 +99,10 @@ export async function loadPixelArt(base: string, key: ArtScale, era: string, io:
   }
 
   const aliasEra = (e: string): void => {
-    for (const name of [...tex.keys()]) for (const a of eraAliases(e, name)) if (!tex.has(a)) tex.set(a, tex.get(name)!);
+    for (const name of [...tex.keys()]) for (const a of eraAliases(e, name)) if (!tex.has(a)) {
+        tex.set(a, tex.get(name)!);
+        aliasOf.set(a, name);
+      }
     for (const job of JOBS) {
       for (const n of [0, 1]) {
         const t = tex.get(personFrameName(job, "walk", "se", n));
@@ -134,8 +139,9 @@ export async function loadPixelArt(base: string, key: ArtScale, era: string, io:
       let url = thumbs.get(name);
       if (url !== undefined) return url;
       url = "";
+      const real = aliasOf.get(name) ?? name;
       for (const b of bitmaps) {
-        const f = b.raw.get(name);
+        const f = b.raw.get(real);
         if (!f) continue;
         const c = document.createElement("canvas");
         c.width = f[2];
@@ -144,7 +150,7 @@ export async function loadPixelArt(base: string, key: ArtScale, era: string, io:
         url = c.toDataURL();
         break;
       }
-      thumbs.set(name, url);
+      if (url) thumbs.set(name, url);
       return url;
     },
     anchor: (name) => anchors[name],

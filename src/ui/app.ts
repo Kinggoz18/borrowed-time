@@ -471,7 +471,7 @@ export class GameUI {
       const ok = !builtGlob && E.canBuild(st, b.glob ? undefined : lot ?? safest(st), t);
       const why = builtGlob ? "Tap the ring or Roads in Build to upgrade" : have >= max ? (b.one ? "Built" : `${have}/${max} built`) : b.credit ? (st.debt + c > E.limit(st) ? "Not enough credit" : "") : st.hours < c ? `Need ${Math.ceil(c - st.hours)} more Hours` : !b.glob && !lot && !safest(st) ? "No free lot" : "";
       const era = this.d.view.currentEra as "colony" | "village";
-      const frame = t === "palisade" ? `ring/0/segA` : t === "road" ? `g/${era}/road/0` : buildingFrame(era, lookFor(era, t, 0).frameType, 0);
+      const frame = t === "palisade" ? `ring/0/segA` : t === "road" ? "ui/road" : buildingFrame(era, lookFor(era, t, 0).frameType, 0);
       return h(
         "div",
         {
@@ -517,8 +517,7 @@ export class GameUI {
     const c = E.cost(type, b.n + 1, st.L);
     const cap = E.tierCap(st);
     const ok = E.canUpgrade(st, g);
-    const era = this.d.view.currentEra as "colony" | "village";
-    const frame = g === "pal" ? `ring/0/segA` : `g/${era}/road/0`;
+    const frame = g === "pal" ? `ring/0/segA` : "ui/road";
     const body: Child[] = [
       h("div", { class: "lot-head" }, h("img", { class: "thumb big", src: this.d.view.thumb(frame), alt: "" }), h("div", {}, h("b", {}, `Level ${b.n}`), h("span", {}, BLURB[type] ?? ""))),
       b.n >= cap
