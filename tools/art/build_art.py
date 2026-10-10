@@ -149,7 +149,7 @@ for name in ("boat", "boat/beached"):
 
 # ------------------------------------------------------------------------------------------------ lamplight halos (dusk and night)
 import fxhalo as FXH
-for k, r in enumerate((9, 14, 22)):
+for k, r in enumerate((12, 18, 28)):
     a, c = FXH.halo(r)
     add("shared", f"fx/halo/{k}", a, c, c)
 
@@ -206,7 +206,7 @@ terr = [f for n, f in frames["shared"].items() if n.startswith(("g/", "shore/", 
 other = [f for n, f in frames["shared"].items() if not n.startswith(("g/", "shore/", "grey/g/", "blend/"))]
 pal = np.concatenate([
     mkpal(b_px, 96), mkpal(sample_pixels(terr, 600), 64), mkpal(sample_pixels(other, 500), 80),
-    np.array([INK, (255, 255, 255), (28, 36, 22)], np.uint8)])
+    np.array([INK, (255, 255, 255), (28, 36, 22), (255, 240, 184), (250, 200, 104), (226, 140, 60)], np.uint8)])
 pal = np.unique(pal, axis=0)[:255]
 print("palette", len(pal))
 

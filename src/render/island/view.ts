@@ -828,25 +828,30 @@ export class IslandView {
     for (const h of this.halos) h.sp.destroy();
     this.halos = [];
     if (!this.amb.halos || !this.art.has("fx/halo/0")) return;
+    const want: { t: IslandLayout["things"][number]; dx: number; dy: number; size: number }[] = [];
     for (const t of this.layout.things) {
-      if (this.halos.length >= this.amb.halos) break;
-      const f = t.frame.replace(/^grey\//, "");
-      if (t.frame.startsWith("grey/") || f === "gnomon" || /\/field\//.test(f) || f.startsWith("p/")) continue;
+      const f = t.frame;
+      if (f.startsWith("grey/") || f === "gnomon" || /\/field\//.test(f) || f.startsWith("p/")) continue;
       const big = /\/f[23]$/.test(f);
       const spots: { dx: number; dy: number; size: number }[] =
         f === "tent" ? [{ dx: 0, dy: -20, size: 2 }]
         : /\/lantern\//.test(f) ? [{ dx: -14, dy: -16, size: 1 }, { dx: 14, dy: -16, size: 1 }]
         : /\/(cottage|workshop|bank|trade|academy|hospital|exchange|harbour)\//.test(f) ? [{ dx: -6, dy: big ? -34 : -18, size: big ? 1 : 0 }]
         : [];
-      for (const sp of spots) {
-        const h = new Sprite(this.art.get(`fx/halo/${sp.size}`));
-        h.blendMode = "add";
-        h.alpha = 0;
-        h.position.set(this.snap(t.x + sp.dx * (t.scale ?? 1)), this.snap(t.y + sp.dy * (t.scale ?? 1)));
-        h.zIndex = t.z + 4;
-        this.objects.addChild(h);
-        this.halos.push({ sp: h, ph: (t.x * 0.37 + t.y * 0.11) % 6.28, base: 0.5 });
-      }
+      for (const sp of spots) want.push({ t, ...sp });
+    }
+    // over the cap, spread the lamps evenly through the town rather than lighting only the back rows
+    const step = Math.max(1, want.length / this.amb.halos);
+    for (let k = 0; k < Math.min(want.length, this.amb.halos); k++) {
+      const { t, dx, dy, size } = want[Math.floor(k * step)];
+      const h = new Sprite(this.art.get(`fx/halo/${size}`));
+      h.blendMode = "add";
+      h.alpha = this.halo * 0.85;
+      h.visible = this.halo > 0.02;
+      h.position.set(this.snap(t.x + dx * (t.scale ?? 1)), this.snap(t.y + dy * (t.scale ?? 1)));
+      h.zIndex = t.z + 120;
+      this.objects.addChild(h);
+      this.halos.push({ sp: h, ph: (t.x * 0.37 + t.y * 0.11) % 6.28, base: 0.85 });
     }
   }
   private emitPuff(h: { x: number; y: number }): void {
@@ -939,7 +944,7 @@ export class IslandView {
     }
     // lamplight fades in at dusk and out at dawn, flickering a little (steady on a paused game)
     const lit = this.night || this.light > 0.88;
-    this.halo += ((lit ? 1 : 0) - this.halo) * Math.min(1, dt * 1.5);
+    this.halo += ((lit ? 1 : 0) - this.halo) * Math.min(1, dt * 3);
     for (let i = 0; i < this.halos.length; i++) {
       const h = this.halos[i];
       h.sp.visible = this.halo > 0.02;
@@ -1343,10 +1348,11 @@ export class IslandView {
     return this.era;
   }
 
-  stats(): { sprites: number; walkers: number; zoom: number; fitZoom: number; sea: string; gulls: number; crests: number; tier: string } {
+  stats(): { sprites: number; walkers: number; zoom: number; fitZoom: number; sea: string; gulls: number; crests: number; tier: string; halos: number } {
     return {
       sprites: this.objects.children.length + this.ground.children.length + this.shore.children.length,
       walkers: this.walkers.length,
+      halos: this.halos.length,
       zoom: this.zoom,
       fitZoom: this.fitZoom,
       sea: seaState(this.raidOn),

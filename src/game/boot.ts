@@ -31,6 +31,7 @@ export interface GameHooks {
   fps: () => number;
   /** Which music track is playing (day or night), for the e2e tests. */
   music: () => { running: boolean; current: string | null };
+  setLight: (u: number, night: boolean) => void;
   error?: string;
 }
 
@@ -132,6 +133,7 @@ export async function bootGame(): Promise<void> {
     playRaid: (res) => view.playRaid(res),
     fps: () => Math.round(fps),
     music: () => ({ running: sfx.music.running, current: sfx.music.current }),
+    setLight: (u, night) => view.setLight(u, night),
   };
   (window as unknown as { __bt: GameHooks }).__bt = hooks;
   if ((await import("@capacitor/core")).Capacitor.isNativePlatform()) void import("@capacitor/splash-screen").then(({ SplashScreen }) => SplashScreen.hide());
