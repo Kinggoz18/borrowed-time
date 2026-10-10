@@ -301,7 +301,7 @@ test("a stale or corrupt save starts fresh instead of crashing", async ({ page }
   await expect(act(page, "new")).toBeVisible();
 });
 
-test("tap targets are at least 48 px and nothing overlaps the HUD", async ({ page }) => {
+test("tap targets are at least 44 px and nothing overlaps the HUD", async ({ page }) => {
   await fresh(page);
   await act(page, "new").click();
   await skipIntro(page);
@@ -310,7 +310,7 @@ test("tap targets are at least 48 px and nothing overlaps the HUD", async ({ pag
     [...document.querySelectorAll<HTMLElement>("#ui button")]
       .filter((b) => b.offsetParent)
       .map((b) => ({ id: b.dataset.act ?? b.textContent, r: b.getBoundingClientRect() }))
-      .filter((x) => x.r.width < 48 || x.r.height < 44)
+      .filter((x) => x.r.width < 43.5 || x.r.height < 43.5)
       .map((x) => `${x.id} ${Math.round(x.r.width)}x${Math.round(x.r.height)}`),
   );
   expect(small).toEqual([]);

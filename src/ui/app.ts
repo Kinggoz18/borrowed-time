@@ -148,8 +148,12 @@ export class GameUI {
     const hud = this.hud?.getBoundingClientRect();
     const bar = this.root.querySelector<HTMLElement>(".bar")?.getBoundingClientRect();
     const top = hud ? hud.bottom : 64;
-    const right = bar ? this.appW() - bar.left : 104;
-    this.d.view.setPlayInsets(top, right);
+    this.root.style.setProperty("--hud-h", `${top}px`);
+    // landscape: the action rail sits on the right; portrait: the action bar sits along the bottom
+    const bottomBar = !!bar && bar.left < this.appW() / 2;
+    const right = bar && !bottomBar ? this.appW() - bar.left : 0;
+    const bottom = bar && bottomBar ? window.innerHeight - bar.top : 0;
+    this.d.view.setPlayInsets(top, right, bottom);
   }
   private appW(): number {
     return window.innerWidth;
@@ -173,6 +177,7 @@ export class GameUI {
     const owed = st.debt > 0;
     const near = owed && st.debt >= 0.8 * lim;
     const nx = TIERS[st.tier + 1];
+    const ready = g.level && g.people && g.kept && g.seal;
     this.hud.replaceChildren(
       h(
         "button",
@@ -180,13 +185,17 @@ export class GameUI {
         h("span", { class: "level-ring", "aria-hidden": "true", style: `--xp: ${Math.min(1, st.xp / Math.max(1, xpNeed(st.L)))}` }),
         h("span", { class: "colony-text" }, h("b", {}, s.meta.colonyName), h("small", {}, `${TIERS[st.tier].name} · Lv ${st.L}`)),
       ),
-      h("div", { class: "chip hours", "data-hud": "hours", title: "Hours" }, icon("hours"), h("b", {}, fmt(st.hours)), h("small", {}, "Hours")),
+      // one pill for both resources: Hours (what you have) and Owed (what you borrowed)
       h(
-        "button",
-        { class: "chip debt " + (owed ? (near ? "owed near" : "owed") : "safe"), "data-hud": "debt", onclick: () => this.openClockkeeper() },
-        icon(owed ? "owed" : "safe"),
-        owed ? h("b", {}, `${fmt(st.debt)}/${fmt(lim)}`) : h("b", {}, "Safe"),
-        h("small", {}, owed ? (near ? "Near limit" : "Owed") : "Nothing owed"),
+        "div",
+        { class: "res" },
+        h("div", { class: "chip hours", "data-hud": "hours", title: "Hours" }, icon("hours"), h("span", { class: "num" }, h("b", {}, fmt(st.hours)), h("small", {}, "Hours"))),
+        h(
+          "button",
+          { class: "chip debt " + (owed ? (near ? "owed near" : "owed") : "safe"), "data-hud": "debt", onclick: () => this.openClockkeeper() },
+          icon(owed ? "owed" : "safe"),
+          h("span", { class: "num" }, owed ? h("b", {}, `${fmt(st.debt)}/${fmt(lim)}`) : h("b", {}, "Safe"), h("small", {}, owed ? (near ? "Near limit" : "Owed") : "Nothing owed")),
+        ),
       ),
       h(
         "div",
@@ -202,10 +211,10 @@ export class GameUI {
       nx
         ? h(
             "button",
-            { class: "chip charter", "data-hud": "charter", onclick: () => this.openCharter() },
+            { class: "chip charter" + (ready ? " ready" : ""), "data-hud": "charter", onclick: () => this.openCharter() },
             icon("star"),
-            h("span", {}, nx.name),
-            // only what still blocks the next tier, at most two items; the sheet has the full list
+            h("span", { class: "charter-name" }, nx.name),
+            // only the first thing still blocking the next tier; the sheet has the full list
             ...[
               !g.level && req(false, `Lv ${st.L}/${nx.lvl}`),
               !g.people && req(false, `${st.pop}/${nx.pop}`, "people"),
@@ -213,10 +222,10 @@ export class GameUI {
               !g.seal && req(false, "Seal"),
             ]
               .filter((x): x is HTMLElement => !!x)
-              .slice(0, 2),
-            g.level && g.people && g.kept && g.seal ? req(true, "Ready") : null,
+              .slice(0, 1),
+            ready ? req(true, "Ready") : null,
           )
-        : h("div", { class: "chip charter" }, icon("star"), h("span", {}, `${TIERS[st.tier].name}`)),
+        : h("div", { class: "chip charter", "data-hud": "charter" }, icon("star"), h("span", { class: "charter-name" }, TIERS[st.tier].name)),
     );
     this.hoursChip = this.hud.querySelector(".chip.hours");
     this.hud.style.setProperty("--light", String(1 - s.dayProgress()));

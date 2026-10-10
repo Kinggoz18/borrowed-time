@@ -49,6 +49,7 @@ const isWatch = (job: Job) => job === "watch" || job === "nell";
 /** Play-area insets (CSS px); updated from the DOM HUD and rail each frame. */
 let hudTop = 64;
 let railRight = 104;
+let barBottom = 0;
 /** Gameplay camera starts this much closer than "whole island fits" (owner: too far out). */
 export const PLAY_ZOOM = 1.6;
 /** ...and never shows a lot narrower than this on screen (CSS px), so buildings stay readable as the ring grows. */
@@ -433,10 +434,11 @@ export class IslandView {
   }
   /** The part of the screen the island owns: below the top HUD, left of the button rail. */
   /** Match the real HUD and action-rail rects from the DOM (safe-area aware). */
-  setPlayInsets(top: number, right: number): void {
-    const moved = Math.abs(top - hudTop) > 0.5 || Math.abs(right - railRight) > 0.5;
+  setPlayInsets(top: number, right: number, bottom = 0): void {
+    const moved = Math.abs(top - hudTop) > 0.5 || Math.abs(right - railRight) > 0.5 || Math.abs(bottom - barBottom) > 0.5;
     hudTop = top;
     railRight = right;
+    barBottom = bottom;
     // the bar or rail changed size (first frame, rotation): an untouched camera re-frames to the new play area
     if (moved && !this.userCam && this.layout) this.fit(false);
   }
@@ -444,7 +446,7 @@ export class IslandView {
   private userCam = false;
   private area(): { x: number; y: number; w: number; h: number } {
     const { width, height } = this.app.screen;
-    return { x: 0, y: hudTop, w: Math.max(1, width - railRight), h: Math.max(1, height - hudTop) };
+    return { x: 0, y: hudTop, w: Math.max(1, width - railRight), h: Math.max(1, height - hudTop - barBottom) };
   }
   private glide: { x: number; y: number } | null = null;
   /** Glide the camera to a lot if it is off screen or under the HUD/rail (a new building is always seen). */
