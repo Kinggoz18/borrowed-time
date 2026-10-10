@@ -11,6 +11,7 @@ import type { Tier } from "../render/config";
 import { IslandView } from "../render/island/view";
 import { GameUI } from "../ui/app";
 import "../ui/ui.css";
+import "../ui/ux.css";
 import { Session } from "./session";
 import { applyOrientation, orientFromSettings } from "../platform/orientation";
 import { loadSettings } from "./settings";

@@ -111,7 +111,10 @@ test("the arc: empty land to Village", async ({ page }) => {
   await expect(page.locator(".sheet [data-group]").first()).toBeVisible();
   await expect(page.locator('.sheet [data-group="defence"] [data-build="palisade"]')).toHaveCount(1);
   await expect(page.locator('.sheet [data-build="road"]')).toHaveCount(0);
-  await expect(page.locator(".sheet [data-next-era]")).toContainText("Village unlocks");
+  // at most one calm teaser per group, never a building's name; the Colony has no category rail
+  await expect(page.locator(".sheet .cat-rail")).toHaveCount(0);
+  expect(await page.locator(".sheet [data-group]").evaluateAll((gs) => gs.filter((g) => g.querySelectorAll(".teaser").length > 1).length)).toBe(0);
+  await expect(page.locator(".sheet .teaser").first()).toContainText("Village");
   await act(page, "build-palisade").click();
   expect((await st(page)).pal).not.toBeNull();
   await expect(page.locator(".coach-tip")).toContainText("Field");
@@ -172,7 +175,8 @@ test("the arc: empty land to Village", async ({ page }) => {
   await act(page, "debug").click();
   await act(page, "close").click();
   await page.locator('[data-hud="charter"]').click();
-  await expect(page.locator(".sheet")).toContainText("Food for");
+  await expect(page.locator(".sheet")).toContainText("Village Charter");
+  await expect(page.locator(".sheet [data-req]")).toHaveCount(4);
   await act(page, "close").click();
   await shot(page, "11b-colony-built-up");
 
@@ -202,7 +206,8 @@ test("the arc: empty land to Village", async ({ page }) => {
     for (let k = 0; k < 12; k++) {
       await page.waitForTimeout(400);
       if (await page.locator(".card.tier").count()) break;
-      const ok = page.locator('.card-wrap [data-act="ok"]');
+      // never dismiss the tier card by accident: it is the one the next step reads
+      const ok = page.locator('.card:not(.tier) [data-act="ok"]');
       if (await ok.count()) await ok.first().click();
       else if (k > 2) break;
     }
@@ -320,7 +325,7 @@ test("tap targets are at least 44 px and nothing overlaps the HUD", async ({ pag
   );
   expect(small).toEqual([]);
   const overlap = await page.evaluate(() => {
-    const sels = ['[data-hud="hours"]', '[data-hud="debt"]', ".daybox", '[data-hud="charter"]', ".pause-btn", ".colony-badge", ".bar"];
+    const sels = ['[data-hud="hours"]', '[data-hud="debt"]', ".timebox", '[data-hud="charter"]', ".pause-btn", ".colony-badge", ".bar"];
     const rs = sels.map((s) => [s, document.querySelector(s)!.getBoundingClientRect()] as const);
     const hit = (p: DOMRect, q: DOMRect) => p.left < q.right && q.left < p.right && p.top < q.bottom && q.top < p.bottom;
     const out: string[] = [];
@@ -334,6 +339,28 @@ test("tap targets are at least 44 px and nothing overlaps the HUD", async ({ pag
   // the HUD is one strip: the island keeps the rest of the screen
   const hudBottom = await page.evaluate(() => document.querySelector(".hud")!.getBoundingClientRect().bottom);
   expect(hudBottom).toBeLessThanOrEqual(88);
+});
+
+test("keyboard: B, H, J and P open their sheets, Escape closes, Space rests; the Journal records the borrow", async ({ page }) => {
+  await fresh(page);
+  await act(page, "new").click();
+  await skipIntro(page);
+  await act(page, "borrow").click();
+  for (const [key, kind] of [["j", "journal"], ["b", "build"], ["h", "keeper"], ["p", "pause"]] as const) {
+    await page.keyboard.press(key);
+    await expect(page.locator(`.sheet[data-kind="${kind}"]`)).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".sheet")).toHaveCount(0);
+  }
+  await page.keyboard.press("Space");
+  await expect(act(page, "rest")).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Space");
+  await expect(act(page, "rest")).toHaveAttribute("aria-pressed", "false");
+  // the first borrow is the first page of the Journal
+  await act(page, "journal").click();
+  await expect(page.locator(".sheet .j-entry").first()).toContainText("Borrowed");
+  await expect(page.locator(".sheet .j-chapter").first()).toContainText("Wreck & Frontier");
+  await act(page, "close").click();
 });
 
 test("held upright with Landscape chosen, the browser asks to turn the phone sideways", async ({ page }) => {

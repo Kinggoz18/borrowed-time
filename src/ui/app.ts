@@ -6,9 +6,8 @@
 import * as E from "../core/engine";
 import type { GameEvent } from "../core/game";
 import { duskRead, rangeBar } from "../core/hints";
-import { B, COUNT, EVENTS, LOT_TYPES, TIERS, xpNeed, type BType } from "../core/rules";
+import { B, EVENTS, LOT_TYPES, TIERS, xpNeed, type BType } from "../core/rules";
 import { cloneState } from "../core/snapshot";
-import type { IslandState } from "../core/state";
 import { lookFor } from "../render/island/layout";
 import type { IslandView } from "../render/island/view";
 import { buildingFrame } from "../art/island/atlas";
@@ -18,9 +17,12 @@ import type { KV } from "../platform/storage";
 import type { Cue, Haptics, Sfx } from "../platform/sfx";
 import { CREDITS } from "./credits";
 import { applyOrientation } from "../platform/orientation";
-import { BAND_WORD, BLURB, HIDDEN_TITLE, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
+import { BAND_WORD, BLURB, HIDDEN_TITLE, HUD, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
 import { h, icon, type Child } from "./dom";
-import { BUILD_ORDER, visibleGroups } from "./buildMenu";
+import { BUILD_ORDER } from "./buildMenu";
+import { actionBar, colonyBadge, goalButton, resPlaque, timePlaque } from "./hudView";
+import { keyAction } from "./hudModel";
+import * as V from "./views";
 import { INTRO_CAMERA, runIntro } from "./intro";
 
 export interface UiDeps {
@@ -46,6 +48,14 @@ export class GameUI {
   session: Session | null = null;
   screen: Screen = "home";
   private hud!: HTMLElement;
+  private pauseBtn!: HTMLElement;
+  private badgeEl!: HTMLElement;
+  private timeEl!: HTMLElement;
+  private resEl!: HTMLElement;
+  private goalEl!: HTMLElement;
+  private hudParts: Record<string, string> = {};
+  private nightToldAt = "";
+  private opener: HTMLElement | null = null;
   private layer!: HTMLElement;
   private toasts!: HTMLElement;
   private sheetOpen = false;
@@ -53,7 +63,6 @@ export class GameUI {
   private coach: "palisade" | "field" | null = null;
   private seen = new Set<string>();
   private selected: string | null = null;
-  private hudCache = "";
   private off: (() => void) | null = null;
   private inDusk = false;
   private hoursChip: HTMLElement | null = null;
@@ -110,26 +119,25 @@ export class GameUI {
     this.screen = "play";
     this.off?.();
     this.off = s.on((evs) => this.onEvents(evs));
-    this.hud = h("header", { class: "hud", "data-screen": "play" });
+    this.pauseBtn = h("button", { class: "btn pause-btn", "aria-label": "Pause", "data-act": "pause", type: "button", onclick: () => this.openPause() }, icon("pause"));
+    this.badgeEl = h("div");
+    this.timeEl = h("div");
+    this.resEl = h("div");
+    this.goalEl = h("div");
+    this.hud = h("header", { class: "hud", "data-screen": "play" }, h("div", { class: "hud-inner" }, this.badgeEl, this.timeEl, h("div", { class: "hud-right" }, this.resEl, this.pauseBtn)));
     this.toasts = h("div", { class: "toasts", "aria-live": "polite" });
     this.layer = h("div", { class: "layer" });
-    const bar = h(
-      "nav",
-      { class: "bar" },
-      h("button", { class: "btn tab", "data-act": "build", onclick: () => this.openBuild() }, icon("build"), h("span", {}, "Build")),
-      h("button", { class: "btn tab", "data-act": "keeper", onclick: () => this.openClockkeeper() }, icon("tent"), h("span", {}, "Hesper")),
-      h("button", { class: "btn tab", "data-act": "rest", "aria-pressed": "false", onclick: (e) => this.toggleRest(e.currentTarget as HTMLElement) }, icon("fast"), h("span", {}, `Rest ${FAST}×`)),
-    );
-    const pauseBtn = h("button", { class: "btn icon-btn pause-btn", "aria-label": "Pause", "data-act": "pause", onclick: () => this.openPause() }, icon("pause"));
-    const kids: Child[] = [this.hud, pauseBtn, this.toasts, bar, this.layer];
+    const bar = actionBar(FAST, { build: () => this.act("build"), keeper: () => this.act("keeper"), journal: () => this.openJournal(), rest: (btn) => this.act("rest", btn) });
+    const kids: Child[] = [this.hud, this.goalEl, this.toasts, bar, this.layer];
     if (this.d.dev) kids.push(h("button", { class: "btn icon-btn debug", "aria-label": "Debug", "data-act": "debug", onclick: () => this.openDebug() }, icon("bug")));
     this.root.replaceChildren(...kids.filter((k): k is HTMLElement => !!k));
-    this.hudCache = "";
-    this.scoreScene();
+    this.hudParts = {};
     this.d.view.setLots(s.state);
     this.d.view.sync(s.state, { dusk: s.state.phase !== "day" });
+    this.scoreScene();
     this.updateHud();
     void this.bindNativePause();
+    this.bindKeys();
     this.syncPlayInsets();
     if (!s.meta.storyDone) void this.runStory();
     else if (!s.meta.introDone) void this.firstRun();
@@ -138,12 +146,62 @@ export class GameUI {
     else this.seasonToast();
   }
 
+  /** Build, Hesper and Rest wait for dawn. A tap says so, once per night, instead of doing nothing. */
+  private act(id: "build" | "keeper" | "rest", btn?: HTMLElement): void {
+    const s = this.session!;
+    if (s.state.phase !== "day") {
+      if (!this.nightToldAt || this.nightToldAt !== `${s.state.season}.${s.state.day}`) {
+        this.nightToldAt = `${s.state.season}.${s.state.day}`;
+        this.toast(HUD.nightToast);
+      }
+      return;
+    }
+    if (id === "build") this.openBuild();
+    else if (id === "keeper") this.openClockkeeper();
+    else if (btn) this.toggleRest(btn);
+  }
+
   private toggleRest(btn: HTMLElement): void {
     const s = this.session!;
     s.speed = s.speed === 1 ? FAST : 1;
     btn.setAttribute("aria-pressed", String(s.speed !== 1));
-    btn.classList.toggle("on", s.speed !== 1);
     this.cue("tap", "light");
+  }
+
+  /** One listener for the laptop: B Build, H Hesper, J Journal, Space Rest, P Pause, Esc closes the open sheet. */
+  private keysBound = false;
+  private bindKeys(): void {
+    if (this.keysBound) return;
+    this.keysBound = true;
+    addEventListener("keydown", (e) => this.onKey(e));
+  }
+  private typing(t: EventTarget | null): boolean {
+    const el = t as HTMLElement | null;
+    return !!el && (el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+  }
+  private onKey(e: KeyboardEvent): void {
+    if (this.screen !== "play" || !this.session || this.typing(e.target)) return;
+    const a = keyAction(e);
+    if (!a || this.cardOpen || this.root.querySelector(".intro, .settings")) return;
+    const inSheet = !!(e.target as HTMLElement | null)?.closest?.(".sheet");
+    if (a === "close") {
+      if (this.sheetOpen) {
+        e.preventDefault();
+        this.closeSheet();
+      }
+      return;
+    }
+    if (e.repeat) return;
+    // Space rests only from the map; inside a sheet it keeps its normal job (pressing a focused button)
+    if (a === "rest" && (this.sheetOpen || inSheet)) return;
+    e.preventDefault();
+    if (a === "build" || a === "keeper") this.act(a);
+    else if (a === "journal") this.openJournal();
+    else if (a === "pause") this.openPause();
+    else {
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      this.act("rest", this.root.querySelector<HTMLElement>('[data-act="rest"]') ?? undefined);
+    }
   }
 
   private syncPlayInsets(): void {
@@ -151,7 +209,7 @@ export class GameUI {
     const bar = this.root.querySelector<HTMLElement>(".bar")?.getBoundingClientRect();
     const top = hud ? hud.bottom : 64;
     this.root.style.setProperty("--hud-h", `${top}px`);
-    // landscape: the action rail sits on the right; portrait: the action bar sits along the bottom
+    // landscape phone: the action rail sits on the right; laptop and portrait: the action bar sits along the bottom
     const bottomBar = !!bar && bar.left < this.appW() / 2;
     const right = bar && !bottomBar ? this.appW() - bar.left : 0;
     const bottom = bar && bottomBar ? window.innerHeight - bar.top : 0;
@@ -161,76 +219,47 @@ export class GameUI {
     return window.innerWidth;
   }
 
+  /** Rebuilds one HUD part only when what it shows has changed, so a focused button is not torn down every hour. */
+  private part(name: string, sig: string, make: () => HTMLElement | null, slot: "badgeEl" | "timeEl" | "resEl" | "goalEl"): void {
+    if (this.hudParts[name] === sig) return;
+    this.hudParts[name] = sig;
+    const next = make() ?? h("div", { class: "goal-none" });
+    this[slot].replaceWith(next);
+    this[slot] = next;
+    if (name === "res") this.hoursChip = next.querySelector(".chip.hours");
+  }
+
   /** Called every frame. Text only changes when the numbers do. */
   updateHud(): void {
     const s = this.session;
     if (!s || this.screen !== "play") return;
-    this.syncPlayInsets();
     const st = s.state;
     const lim = E.limit(st);
-    const left = Math.max(0, st.dayLen - st.hour);
     const g = E.growthNeeds(st);
-    const sig = [Math.floor(st.hours), st.debt, lim, st.day, st.season, left, st.pop, st.L, st.tier, st.phase, g.seal, s.meta.colonyName].join("|");
-    if (sig === this.hudCache) {
-      this.hud.style.setProperty("--light", String(1 - s.dayProgress()));
-      return;
+    const left = Math.max(0, st.dayLen - st.hour);
+    this.part("badge", [s.meta.colonyName, st.tier, st.L, Math.round((st.xp / Math.max(1, xpNeed(st.L))) * 20)].join("|"), () => colonyBadge(st, s.meta.colonyName, () => this.openProfile()), "badgeEl");
+    this.part("time", [st.day, st.season, left, st.dayLen, st.phase, st.event].join("|"), () => timePlaque(st), "timeEl");
+    this.part("res", [Math.floor(st.hours), st.debt, lim, Math.round(E.income(st) * 10)].join("|"), () => resPlaque(st, () => this.act("keeper")), "resEl");
+    this.part("goal", [st.tier, st.L, st.pop, st.debt <= lim, st.lien, E.absDay(st), g.people, g.level].join("|"), () => goalButton(st, () => this.openCharter()), "goalEl");
+    this.syncBar();
+    this.syncInert();
+    this.syncPlayInsets();
+  }
+
+  /** At dusk and night the actions that need daylight look and say they are unavailable (Journal stays on). */
+  private syncBar(): void {
+    const day = this.session!.state.phase === "day";
+    for (const id of ["build", "keeper", "rest"]) {
+      const b = this.root.querySelector<HTMLElement>(`.bar [data-act="${id}"]`);
+      if (!b) continue;
+      if (day) b.removeAttribute("aria-disabled");
+      else b.setAttribute("aria-disabled", "true");
     }
-    this.hudCache = sig;
-    const owed = st.debt > 0;
-    const near = owed && st.debt >= 0.8 * lim;
-    const nx = TIERS[st.tier + 1];
-    const ready = g.level && g.people && g.kept && g.seal;
-    this.hud.replaceChildren(
-      h(
-        "button",
-        { class: "colony-badge", "data-act": "profile", onclick: () => this.openProfile(), title: s.meta.colonyName },
-        h("span", { class: "level-ring", "aria-hidden": "true", style: `--xp: ${Math.min(1, st.xp / Math.max(1, xpNeed(st.L)))}` }),
-        h("span", { class: "colony-text" }, h("b", {}, s.meta.colonyName), h("small", {}, `${TIERS[st.tier].name} · Lv ${st.L}`)),
-      ),
-      // one pill for both resources: Hours (what you have) and Owed (what you borrowed)
-      h(
-        "div",
-        { class: "res" },
-        h("div", { class: "chip hours", "data-hud": "hours", title: "Hours" }, icon("hours"), h("span", { class: "num" }, h("b", {}, fmt(st.hours)), h("small", {}, "Hours"))),
-        h(
-          "button",
-          { class: "chip debt " + (owed ? (near ? "owed near" : "owed") : "safe"), "data-hud": "debt", onclick: () => this.openClockkeeper() },
-          icon(owed ? "owed" : "safe"),
-          h("span", { class: "num" }, owed ? h("b", {}, `${fmt(st.debt)}/${fmt(lim)}`) : h("b", {}, "Safe"), h("small", {}, owed ? (near ? "Near limit" : "Owed") : "Nothing owed")),
-        ),
-      ),
-      h(
-        "div",
-        { class: "daybox", title: `Season ${st.season}` },
-        h(
-          "div",
-          { class: "hud-row day" },
-          icon(st.phase === "day" ? "sun" : "moon"),
-          h("span", { "data-hud": "day" }, `Day ${st.day}/6 · `, h("b", {}, st.phase === "day" ? `${left}h light` : st.phase === "dusk" ? "Dusk" : "Night")),
-        ),
-        h("span", { class: "lightbar", "aria-hidden": "true" }, h("i", {})),
-      ),
-      nx
-        ? h(
-            "button",
-            { class: "chip charter" + (ready ? " ready" : ""), "data-hud": "charter", onclick: () => this.openCharter() },
-            icon("star"),
-            h("span", { class: "charter-name" }, nx.name),
-            // only the first thing still blocking the next tier; the sheet has the full list
-            ...[
-              !g.level && req(false, `Lv ${st.L}/${nx.lvl}`),
-              !g.people && req(false, `${st.pop}/${nx.pop}`, "people"),
-              !g.kept && req(false, "Over limit"),
-              !g.seal && req(false, "Seal"),
-            ]
-              .filter((x): x is HTMLElement => !!x)
-              .slice(0, 1),
-            ready ? req(true, "Ready") : null,
-          )
-        : h("div", { class: "chip charter", "data-hud": "charter" }, icon("star"), h("span", { class: "charter-name" }, TIERS[st.tier].name)),
-    );
-    this.hoursChip = this.hud.querySelector(".chip.hours");
-    this.hud.style.setProperty("--light", String(1 - s.dayProgress()));
+  }
+  /** While a sheet or a card is open the HUD cannot be reached by keyboard or tap. */
+  private syncInert(): void {
+    const on = this.sheetOpen || this.cardOpen;
+    for (const el of this.root.querySelectorAll<HTMLElement>(".hud, .goal, .bar, .debug")) el.toggleAttribute("inert", on);
   }
 
   private floatIncome(n: number): void {
@@ -423,18 +452,30 @@ export class GameUI {
   }
 
   // ---------- sheets ----------
-  private sheet(title: string, body: Child[], cls = ""): HTMLElement {
+  private sheet(title: string, body: Child[], cls = "", o: { kicker?: string; titleEl?: Child; raw?: boolean } = {}): HTMLElement {
     this.closeSheet();
     this.sheetOpen = true;
     if (this.session) this.setPaused(true);
-    const close = h("button", { class: "btn icon-btn", "aria-label": "Close", "data-act": "close", onclick: () => this.closeSheet() }, icon("close"));
-    const el = h("div", { class: "sheet-wrap", onclick: (e) => e.target === e.currentTarget && this.closeSheet() }, h("section", { class: `sheet ${cls}`, role: "dialog", "aria-label": title }, h("header", {}, h("h2", {}, title), close), h("div", { class: "sheet-body" }, ...body)));
+    this.opener = (document.activeElement as HTMLElement | null) ?? null;
+    const close = h("button", { class: "btn icon-btn", "aria-label": "Close", "data-act": "close", type: "button", onclick: () => this.closeSheet() }, icon("close"));
+    const inner = o.raw ? body : [h("div", { class: "sb sheet-body" }, ...body)];
+    const el = h(
+      "div",
+      { class: "sheet-wrap", "data-act": "scrim", onclick: (e) => e.target === e.currentTarget && this.closeSheet() },
+      h("section", { class: `plaque panel sheet ${cls}`.trim(), role: "dialog", "aria-label": title }, h("header", { class: "sh" }, h("div", { class: "sh-t" }, o.kicker ? h("span", { class: "kicker" }, o.kicker) : null, h("h2", {}, o.titleEl ?? title)), close), ...inner),
+    );
     this.layer.appendChild(el);
+    this.syncInert();
+    el.querySelector<HTMLElement>('[data-act="close"]')?.focus({ preventScroll: true });
     return el;
   }
   closeSheet(): void {
     this.layer?.querySelector(".sheet-wrap")?.remove();
+    const had = this.sheetOpen;
     this.sheetOpen = false;
+    this.syncInert();
+    if (had && this.opener?.isConnected) this.opener.focus({ preventScroll: true });
+    this.opener = null;
     this.selected = null;
     this.d.view.highlight(null);
     this.d.view.setBuildOpen(false);
@@ -466,45 +507,34 @@ export class GameUI {
     this.d.view.focusLot(k, cover);
   }
 
+  /** The context the sheet views draw from: the state, the sprite thumbs, and the two things every sheet can do. */
+  private vctx(): V.Ctx {
+    const st = this.session!.state;
+    return {
+      st,
+      thumb: (t) => {
+        const era = this.d.view.currentEra as "colony" | "village";
+        const frame = t === "palisade" ? "ring/0/segA" : t === "road" ? "ui/road" : buildingFrame(era, lookFor(era, t, 0).frameType, 0);
+        return this.d.view.thumb(frame);
+      },
+      hesper: () => this.openClockkeeper(),
+      close: () => this.closeSheet(),
+    };
+  }
+  private cat = "all";
+
   openBuild(key?: string): void {
     const s = this.session!;
     const st = s.state;
     if (st.phase !== "day") return;
     this.selected = key ?? null;
     this.d.view.highlight(key ?? null);
-    const lot = key ?? undefined;
-    const buildRow = (t: BType): HTMLElement => {
-      const b = B[t];
-      const c = E.cost(t, 0, st.L);
-      const have = b.glob ? (st[b.glob] ? 1 : 0) : E.countOf(st, t);
-      const max = COUNT[t][st.tier];
-      const builtGlob = b.glob && st[b.glob];
-      const ok = !builtGlob && E.canBuild(st, b.glob ? undefined : lot ?? safest(st), t);
-      const why = builtGlob ? "Tap the ring or Roads in Build to upgrade" : have >= max ? (b.one ? "Built" : `${have}/${max} built`) : b.credit ? (st.debt + c > E.limit(st) ? "Not enough credit" : "") : st.hours < c ? `Need ${Math.ceil(c - st.hours)} more Hours` : !b.glob && !lot && !safest(st) ? "No free lot" : "";
-      const era = this.d.view.currentEra as "colony" | "village";
-      const frame = t === "palisade" ? `ring/0/segA` : t === "road" ? "ui/road" : buildingFrame(era, lookFor(era, t, 0).frameType, 0);
-      return h(
-        "div",
-        {
-          class: "row" + (ok ? "" : " off") + (this.coach === t ? " coach" : "") + (builtGlob ? " built-glob" : ""),
-          "data-build": t,
-          onclick: builtGlob ? () => this.openGlob(b.glob as "pal" | "road") : undefined,
-        },
-        h("img", { class: "thumb", src: this.d.view.thumb(frame), alt: "" }),
-        h("div", { class: "row-text" }, h("b", {}, b.name), h("span", {}, BLURB[t] ?? ""), why && h("em", {}, why)),
-        h(
-          "button",
-          { class: "btn buy" + (b.credit ? " credit" : ""), disabled: !ok, "data-act": `build-${t}`, onclick: () => this.doBuild(t, lot) },
-          icon(b.credit ? "owed" : "hours"),
-          h("span", {}, String(c)),
-          h("small", {}, b.credit ? "on credit" : "Hours"),
-        ),
-      );
-    };
-    const groups = visibleGroups(st.tier, BUILD_ORDER).map((g) => h("section", { class: "build-group", "data-group": g.id }, h("h3", { class: "build-group-title" }, g.title), ...g.types.map(buildRow)));
-    const rows: Child[] = [...groups];
-    const el = this.sheet(key ? "Build here" : "Build", [h("p", { class: "sub" }, key ? "Pick what goes on this lot." : "New buildings go on the safest free lot."), ...rows]);
+    const keep = this.layer.querySelector<HTMLElement>(".sheet[data-kind=build] .blist")?.scrollTop ?? 0;
+    const body = V.buildView(this.vctx(), { lot: key, coach: this.coach, cat: this.cat, onCat: (id) => (this.cat = id), onBuy: (t) => this.doBuild(t, key), onUpgradeGlob: (g) => this.openGlob(g), onHesper: () => this.openClockkeeper() });
+    const el = this.sheet(key ? "Build here" : "Build", body, "drawer", { raw: true });
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "build";
+    const list = el.querySelector<HTMLElement>(".blist");
+    if (list && keep) list.scrollTop = keep;
     this.d.view.setBuildOpen(true);
   }
   private doBuild(t: BType, key?: string): void {
@@ -628,24 +658,23 @@ export class GameUI {
     this.scoreScene("hesper");
   }
 
-  private openCharter(): void {
+  private openCharter(tab?: "needs" | "gets"): void {
     const st = this.session!.state;
-    const g = E.growthNeeds(st);
-    const nx = g.next;
-    if (!nx) return;
-    const el = this.sheet(`${nx.name} charter`, [
-      h("p", { class: "sub" }, `Meet all four by morning and the island grows into a ${nx.name}.`),
-      h(
-        "ul",
-        { class: "checks" },
-        h("li", { class: g.level ? "ok" : "" }, icon(g.level ? "check" : "cross"), `Level ${nx.lvl} (now ${st.L})`),
-        h("li", { class: g.people ? "ok" : "" }, icon(g.people ? "check" : "cross"), `${nx.pop} people (now ${st.pop})`),
-        h("li", { class: g.kept ? "ok" : "" }, icon(g.kept ? "check" : "cross"), "Not over Hesper's limit"),
-        h("li", { class: g.seal ? "ok" : "" }, icon(g.seal ? "check" : "cross"), g.seal ? "No seal on the charter" : `Hesper's seal until day ${st.lien - (st.season - 1) * 6}`),
-      ),
-      h("p", { class: "sub" }, icon("people"), `Food for ${Math.floor(E.food(st))} · homes for ${E.popRoom(st)}. People only stay if both last.`),
-      Math.min(Math.floor(E.food(st)), E.popRoom(st)) < nx.pop && h("p", { class: "tag grey" }, icon("cross"), `Build or upgrade Fields and Cottages: ${nx.pop} people need food and homes.`),
-    ]);
+    const nx = E.growthNeeds(st).next;
+    const ctx = this.vctx();
+    const kids = V.charterView(ctx, {
+      offered: BUILD_ORDER,
+      startTab: tab,
+      thumbOf: ctx.thumb,
+      onGo: (go) => {
+        if (go === "hesper") return this.openClockkeeper();
+        this.cat = go === "build-dwellings" ? "dwellings" : "food";
+        this.openBuild();
+      },
+    });
+    if (!kids || !nx) return;
+    const name = `${nx.name} Charter`;
+    const el = this.sheet(name, kids, "panel-wide", { kicker: "Next age", titleEl: h("span", {}, h("span", { class: "cap" }, name[0]!), name.slice(1)), raw: true });
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "charter";
   }
 
@@ -653,12 +682,14 @@ export class GameUI {
   card(o: { title: string; body?: Child[] | string[]; buttons: { id: string; label: string; kind?: "primary" | "danger"; icon?: Parameters<typeof icon>[0]; note?: string; disabled?: boolean }[]; cls?: string; art?: string; ask?: string; kicker?: string }): Promise<string> {
     return new Promise((resolve) => {
       this.cardOpen = true;
+      this.syncInert();
       if (this.session) this.setPaused(true);
       this.d.sfx.duck(true);
       const wrap = h("div", { class: "card-wrap" });
       const done = (id: string) => {
         wrap.remove();
         this.cardOpen = !!this.root.querySelector(".card-wrap");
+        this.syncInert();
         if (this.session && !this.cardOpen && !this.sheetOpen && !this.inDusk) this.setPaused(false);
         this.d.sfx.duck(false);
         this.cue("tap", "light");
@@ -845,42 +876,19 @@ export class GameUI {
 
   openProfile(): void {
     const s = this.session!;
-    const st = s.state;
-    const stats = st.stats;
-    const body: Child[] = [
-      h("p", { class: "sub" }, `${TIERS[st.tier].name} · Level ${st.L}`),
-      h("ul", { class: "report" }, h("li", {}, icon("people"), `${st.pop} people · food ${Math.floor(E.food(st))} · homes ${E.popRoom(st)}`)),
-      h("ul", { class: "report" }, h("li", {}, icon("build"), `${E.blds(st).length} buildings on the island`)),
-      h("p", { class: "sub" }, `Season ${st.season} · Day ${st.day}`),
-      h("h3", {}, "Ledger"),
-      h("ul", { class: "report" },
-        h("li", {}, `Borrowed ${stats.borrowed} · repaid ${stats.repaid}`),
-        h("li", {}, `Raids won ${stats.raidsWon} · lost ${stats.raidsLost}`),
-        h("li", {}, `Buildings seized ${stats.seized} · level-ups ${stats.levelUps}`),
-      ),
-    ];
-    const el = this.sheet(s.meta.colonyName, body, "profile");
+    const kids = V.profileView(this.vctx(), BUILD_ORDER, s.meta);
+    const el = this.sheet(s.meta.colonyName, kids, "panel-wide", { kicker: "Profile", raw: true });
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "profile";
   }
 
   openJournal(): void {
     const s = this.session!;
-    const lines = s.data.events
-      .slice(-24)
-      .reverse()
-      .map((ev) => {
-        if (ev.kind === "raid" && ev.result && !ev.result.quiet) return ev.result.won ? `Night ${ev.day}: we held the wall.` : `Night ${ev.day}: they broke through.`;
-        if (ev.kind === "seized") return `Hesper took a ${ev.seizure.type} on day ${ev.day}.`;
-        if (ev.kind === "tierUp") return `The island became ${TIERS[ev.tier].name}.`;
-        if (ev.kind === "built") return `We raised a ${B[ev.type].name}.`;
-        return null;
-      })
-      .filter((x): x is string => !!x);
-    const body: Child[] = [
-      h("button", { class: "btn", "data-act": "replay-intro", onclick: () => { this.closeSheet(); void this.runStory(); } }, "Replay the arrival story"),
-      lines.length ? h("ul", { class: "report journal" }, ...lines.map((t) => h("li", {}, t))) : h("p", { class: "sub" }, "The ledger is still mostly blank."),
-    ];
-    const el = this.sheet("Journal", body, "journal");
+    if (this.cardOpen) return;
+    const st = s.state;
+    let seed = 7;
+    for (const ch of s.data.islandId) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+    const kids = V.journalView(this.vctx(), { events: s.data.events, seed, colony: s.meta.colonyName, days: (st.season - 1) * 6 + st.day, nights: st.stats.raidsWon, onReplay: () => { this.closeSheet(); void this.runStory(); } });
+    const el = this.sheet("Journal", kids, "panel-wide", { kicker: "Kept by Ada", raw: true });
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "journal";
   }
 
@@ -1012,14 +1020,10 @@ export class GameUI {
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "debug";
   }
   private refreshAfterDev(): void {
-    this.hudCache = "";
+    this.hudParts = {};
     this.d.view.sync(this.session!.state);
     this.updateHud();
   }
-}
-
-function req(ok: boolean, text: string, word?: string): HTMLElement {
-  return h("span", { class: "req" + (ok ? " ok" : "") }, icon(ok ? "check" : "cross"), text, word ? h("small", {}, ` ${word}`) : null);
 }
 
 /** Dusk card hook: defence, a raider range, and a bar against that defence. */
@@ -1044,4 +1048,3 @@ function duskMeter(
     ),
   );
 }
-const safest = (st: IslandState): string | undefined => E.greyOrder(st).slice().reverse().find((k) => E.isFree(st, k));

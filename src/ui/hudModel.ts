@@ -95,3 +95,18 @@ export function goalModel(st: IslandState) {
 /** Everything the HUD's look depends on, as one string: it only rebuilds a part when its piece changes. */
 export const colonySig = (st: IslandState, name: string): string => [name, st.tier, st.L, Math.round((st.xp / Math.max(1, xpNeed(st.L))) * 20)].join("|");
 
+
+export type KeyAction = "build" | "keeper" | "journal" | "pause" | "rest" | "close";
+/** The laptop's key caps: B Build, H Hesper, J Journal, Space Rest, P Pause, Esc closes the open sheet. Anything else: null. */
+export function keyAction(e: { key: string; code?: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): KeyAction | null {
+  if (e.ctrlKey || e.metaKey || e.altKey) return null;
+  if (e.code === "Space" || e.key === " ") return "rest";
+  switch (e.key.toLowerCase()) {
+    case "b": return "build";
+    case "h": return "keeper";
+    case "j": return "journal";
+    case "p": return "pause";
+    case "escape": return "close";
+    default: return null;
+  }
+}

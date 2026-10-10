@@ -9,7 +9,7 @@ import { hashState } from "../src/core/snapshot";
 import type { IslandState } from "../src/core/state";
 import { BUILD_ORDER, BUILD_GROUPS, cardFor, groupAffordable, teaserFor, visibleGroups } from "../src/ui/buildMenu";
 import { charter } from "../src/ui/charterModel";
-import { goalModel, owedChip, owedState, timeBox } from "../src/ui/hudModel";
+import { goalModel, keyAction, owedChip, owedState, timeBox } from "../src/ui/hudModel";
 import { J_EMPTY, J_ERROR, J_NONE, TITLES, VOICE } from "../src/ui/journalCopy";
 import { chaptered, journalEntries, levelMilestone, PAGE } from "../src/ui/journalModel";
 import { ledgerRows, profileColony, profileIsland } from "../src/ui/profileModel";
@@ -400,5 +400,20 @@ describe("journal", () => {
     expect(J_EMPTY.title).toBe("The first page is blank.");
     expect(J_NONE.title).toBe("Nothing here yet.");
     expect(J_ERROR.title).toBe("The book won't open.");
+  });
+});
+
+describe("laptop key caps", () => {
+  it("maps B, H, J, Space, P and Escape; ignores the rest and any modifier", () => {
+    expect(keyAction({ key: "b" })).toBe("build");
+    expect(keyAction({ key: "B" })).toBe("build");
+    expect(keyAction({ key: "h" })).toBe("keeper");
+    expect(keyAction({ key: "j" })).toBe("journal");
+    expect(keyAction({ key: " ", code: "Space" })).toBe("rest");
+    expect(keyAction({ key: "p" })).toBe("pause");
+    expect(keyAction({ key: "Escape" })).toBe("close");
+    expect(keyAction({ key: "x" })).toBeNull();
+    expect(keyAction({ key: "b", ctrlKey: true })).toBeNull();
+    expect(keyAction({ key: "j", metaKey: true })).toBeNull();
   });
 });
