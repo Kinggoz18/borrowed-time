@@ -106,6 +106,20 @@ export function stealthHidden(st: IslandState, kind: RaidKind = raidKind(st)): b
   return kind === "ghosts" && !canSpot(st);
 }
 
+export type SailTint = "grey" | "hull";
+
+/** Horizon sail colour by raid kind (presentation only). */
+export function sailTint(kind: RaidKind): SailTint | null {
+  if (kind === "quiet" || kind === "ghosts") return null;
+  if (kind === "longboats" || kind === "longDusk" || kind === "siege" || kind === "rams" || kind === "ironclads" || kind === "meters") return "hull";
+  return "grey";
+}
+
+/** 3–6 sails, fixed from season and day (no island RNG). */
+export function sailCount(season: number, day: number): number {
+  return 3 + ((season * 5 + day * 3) % 4);
+}
+
 export const LINES: Record<Exclude<RaidKind, "quiet">, Record<Band, readonly string[]>> = {
   skiffs: {
     light: [

@@ -4,7 +4,7 @@
  * island's RNG, so showing a hint cannot change the game.
  */
 import * as E from "./engine";
-import { HIDDEN, LINES, QUIET, raidKind, stealthHidden, tacticOf, type RaidKind } from "./raiders";
+import { HIDDEN, LINES, QUIET, raidKind, sailCount, sailTint, stealthHidden, tacticOf, type RaidKind, type SailTint } from "./raiders";
 import type { IslandState } from "./state";
 
 export type { RaidKind };
@@ -87,6 +87,37 @@ export function pickLine(lines: readonly string[], season: number, day: number):
 export function bandOf(strength: number, defence: number): Band {
   const q = strength / Math.max(1, defence);
   return q < 0.7 ? "light" : q <= 1.1 ? "even" : "heavy";
+}
+
+/** Fraction of the day when the watch calls (hour = round(NOON_FRAC * dayLen), clamped). */
+export const NOON_FRAC = 0.6;
+export const NOON_CALM_LINE = "Calm sea.";
+
+export function noonHour(dayLen: number): number {
+  const h = Math.round(NOON_FRAC * dayLen);
+  return Math.max(1, Math.min(dayLen - 1, h));
+}
+
+export interface NoonCall {
+  calm: boolean;
+  kind: RaidKind;
+  band: Band | null;
+  line: string;
+  sails: number;
+  tint: SailTint | null;
+  hidden: boolean;
+}
+
+/** Same threat read as dusk, earlier in the day; calm line on quiet nights. */
+export function noonCall(st: IslandState): NoonCall {
+  const hint = duskHint(st);
+  if (hint.kind === "quiet") {
+    return { calm: true, kind: "quiet", band: null, line: NOON_CALM_LINE, sails: 0, tint: null, hidden: false };
+  }
+  const hidden = hint.hidden;
+  const sails = hidden ? 0 : sailCount(st.season, st.day);
+  const tint = hidden ? null : sailTint(hint.kind);
+  return { calm: false, kind: hint.kind, band: hint.band, line: hint.line, sails, tint, hidden };
 }
 
 export function duskHint(st: IslandState): DuskHint {

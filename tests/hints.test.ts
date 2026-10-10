@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as E from "../src/core/engine";
-import { bandOf, duskHint, duskRead, HINT_SPREAD, LINES, OBS_HINT_SPREAD, pickLine, QUIET, rangeBar, strengthRange } from "../src/core/hints";
+import { bandOf, duskHint, duskRead, HINT_SPREAD, LINES, noonCall, noonHour, NOON_CALM_LINE, OBS_HINT_SPREAD, pickLine, QUIET, rangeBar, strengthRange } from "../src/core/hints";
 import { lotKeys } from "../src/core/rules";
 import { hashState } from "../src/core/snapshot";
 
@@ -104,6 +104,35 @@ describe("dusk hints", () => {
     expect(r.loan).toBe(E.duskLoan(st));
     expect(r.hint.range).not.toBeNull();
   });
+  it("noon hour sits before dusk for day lengths 7–12", () => {
+    for (const dayLen of [7, 8, 9, 10, 11, 12]) {
+      const h = noonHour(dayLen);
+      expect(h).toBeGreaterThanOrEqual(1);
+      expect(h).toBeLessThan(dayLen);
+    }
+  });
+  it("noon call matches dusk hint on raid and boss days, calm line on quiet", () => {
+    const st = E.newGame({ seed: 3 });
+    st.day = 1;
+    expect(noonCall(st).calm).toBe(true);
+    expect(noonCall(st).line).toBe(NOON_CALM_LINE);
+    st.day = 2;
+    const call = noonCall(st);
+    const dusk = duskHint(st);
+    expect(call.line).toBe(dusk.line);
+    expect(call.kind).toBe(dusk.kind);
+    expect(call.band).toBe(dusk.band);
+    st.day = 6;
+    expect(noonCall(st).line).toBe(duskHint(st).line);
+  });
+  it("reading the noon call never changes the island", () => {
+    const st = E.newGame({ seed: 9 });
+    st.day = 4;
+    const before = hashState(st);
+    noonCall(st);
+    expect(hashState(st)).toBe(before);
+  });
+
   it("the range bar places defence on the same scale as the raiders", () => {
     const b = rangeBar(12, 9, 15);
     expect(b.defPct).toBeGreaterThan(b.loPct);
