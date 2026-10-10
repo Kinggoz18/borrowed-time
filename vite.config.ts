@@ -6,5 +6,8 @@ export default defineConfig(({ mode }) => ({
   define: { __PERF_HUD__: JSON.stringify(mode !== "production") },
   server: { host: true, port: 5191 },
   preview: { host: true, port: 4191 },
+  optimizeDeps: {
+    include: ["@capacitor/app", "@capacitor/screen-orientation"],
+  },
   build: { target: "es2022", chunkSizeWarningLimit: 1500 },
 }));
