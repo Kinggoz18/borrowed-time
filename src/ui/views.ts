@@ -121,7 +121,7 @@ export function charterView(c: Ctx, o: { onGo: (go: "build-dwellings" | "build-f
       h("h3", { class: "sec", style: "margin-top:12px" }, `What the ${nx.name} brings`),
       ...m.rewards.map((r) => h("div", { class: "reward" }, icon(r.icon), h("b", {}, r.title), h("span", {}, r.line))),
       m.unlocks.length ? h("h3", { class: "sec", style: "margin-top:8px" }, CHARTER.newToBuild) : null,
-      m.unlocks.length ? h("div", { class: "unlocks" }, ...m.unlocks.map((t) => h("span", { class: "unlock" }, h("img", { alt: "", src: o.thumbOf(t) }), B[t].name))) : null,
+      m.unlocks.length ? h("div", { class: "unlocks" }, ...m.unlocks.map((t) => h("span", { class: "unlock" }, o.thumbOf(t) ? h("img", { alt: "", src: o.thumbOf(t) }) : icon(BLD_ICON[t] ?? "build"), B[t].name))) : null,
     ),
   );
   const root = h("div", { class: "sb" }, h("div", { class: "charter" }, needs, gets));
@@ -168,7 +168,7 @@ function cardEl(c: Ctx, cd: BuildCard, o: BuildOpts): HTMLElement {
   return h(
     "article",
     { class: cls, "data-build": t, onclick: cd.state === "credit" ? o.onHesper : undefined },
-    h("div", { class: "thumb" }, h("img", { alt: "", src: c.thumb(t) })),
+    h("div", { class: "thumb" }, c.thumb(t) ? h("img", { alt: "", src: c.thumb(t) }) : icon(BLD_ICON[t] ?? "build")),
     h("div", { class: "tx" }, h("div", { class: "nm" }, h("b", {}, cd.name), cd.meta ? h("small", {}, cd.meta) : cd.credit ? h("span", { class: "pen" }, icon("owed"), "On credit") : null), h("span", { class: "bl" }, BLURB[t] ?? ""), why),
     btn ?? tail,
   );
