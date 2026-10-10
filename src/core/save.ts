@@ -2,6 +2,7 @@
  * Versioned save file: parse, validate and migrate. Pure (the storage adapters live in
  * src/platform). Never throws: a broken or foreign save is reported as null.
  */
+import { upgradeEvents } from "./eventlog";
 import type { GameData } from "./game";
 import type { IslandState } from "./state";
 
@@ -66,6 +67,7 @@ export function decodeSave(raw: string | null): SaveFile | null {
     }
     const f = o as unknown as SaveFile;
     if (!f.data || !validState(f.data.state) || !validState(f.data.checkpoint) || !Array.isArray(f.data.commands) || !Array.isArray(f.data.events)) return null;
+    f.data.events = upgradeEvents(f.data.events);
     if (!f.meta || typeof f.meta !== "object") f.meta = { introDone: true, storyDone: true, colonyName: "New Patience", savedAt: 0 };
     else if (typeof (f.meta as SaveMeta).storyDone !== "boolean") (f.meta as SaveMeta).storyDone = (f.meta as SaveMeta).introDone;
     return f;

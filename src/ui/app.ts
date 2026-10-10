@@ -20,7 +20,7 @@ import { CREDITS } from "./credits";
 import { applyOrientation } from "../platform/orientation";
 import { BAND_WORD, BLURB, HIDDEN_TITLE, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
 import { h, icon, type Child } from "./dom";
-import { nextEraLine, visibleGroups } from "./buildMenu";
+import { BUILD_ORDER, visibleGroups } from "./buildMenu";
 import { INTRO_CAMERA, runIntro } from "./intro";
 
 export interface UiDeps {
@@ -40,7 +40,6 @@ export interface UiDeps {
 type Screen = "home" | "play" | "settings";
 
 const fmt = (n: number): string => (Math.abs(n) >= 1000 ? (n / 1000).toFixed(1) + "k" : String(Math.floor(n)));
-const BUILD_ORDER: BType[] = ["palisade", "field", "cottage", "workshop", "tower", "bank", "road", "trade", "lantern"];
 
 export class GameUI {
   readonly root: HTMLElement;
@@ -503,8 +502,7 @@ export class GameUI {
       );
     };
     const groups = visibleGroups(st.tier, BUILD_ORDER).map((g) => h("section", { class: "build-group", "data-group": g.id }, h("h3", { class: "build-group-title" }, g.title), ...g.types.map(buildRow)));
-    const next = nextEraLine(st.tier, BUILD_ORDER);
-    const rows: Child[] = [...groups, next ? h("p", { class: "sub next-era", "data-next-era": "" }, next) : null];
+    const rows: Child[] = [...groups];
     const el = this.sheet(key ? "Build here" : "Build", [h("p", { class: "sub" }, key ? "Pick what goes on this lot." : "New buildings go on the safest free lot."), ...rows]);
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "build";
     this.d.view.setBuildOpen(true);

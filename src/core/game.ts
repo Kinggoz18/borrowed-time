@@ -3,6 +3,7 @@
  * replaying the command log from a checkpoint reproduces the island exactly.
  */
 import { Rng } from "./rng";
+import { annotate, EVENT_CAP, trimEvents, worthKeeping } from "./eventlog";
 import * as E from "./engine";
 import { B, SEASON_DAYS, TECH, type BType, type TechId } from "./rules";
 import { cloneState, hashState } from "./snapshot";
@@ -35,7 +36,9 @@ export type GameEvent =
   | { kind: "seized"; seizure: E.Seizure }
   | { kind: "tierUp"; tier: number }
   | { kind: "seasonEnd"; season: number; won: boolean };
-export type LoggedEvent = GameEvent & { seq: number; season: number; day: number };
+/** Extra notes recorded with an event: the era it happened in, whether it was a first, and the ledger just after a borrowing. */
+export type EventNotes = { era?: number; first?: true; debt?: number; lim?: number };
+export type LoggedEvent = GameEvent & { seq: number; season: number; day: number } & EventNotes;
 
 export class CommandError extends Error {}
 
@@ -154,7 +157,13 @@ export function dispatch(g: GameData, cmd: Command): GameEvent[] {
   g.seq++;
   g.commands.push({ ...cmd, seq: g.seq });
   const at = { seq: g.seq, season: before.season, day: before.day };
-  for (const ev of evs) g.events.push({ ...ev, ...at });
+  for (const ev of evs) {
+    if (!worthKeeping(ev)) continue;
+    // the era is the one the event happened in (a tier-up belongs to the era it opens)
+    const era = ev.kind === "tierUp" ? ev.tier : before.tier;
+    g.events.push({ ...ev, ...at, ...annotate(ev, g.events, era, g.state.debt, E.limit(g.state)) });
+  }
+  if (g.events.length > EVENT_CAP) g.events = trimEvents(g.events);
   // a new season is a checkpoint: replay never needs older commands
   if (evs.some((e) => e.kind === "seasonEnd")) {
     g.checkpoint = cloneState(g.state);
