@@ -11,7 +11,8 @@ import {
   PEOPLE_DEF, PEOPLE_INC, RAID_K, SEASON_DAYS, TECH, THREAT_EXP, TIERS, costMul, kij, lotKeys, ramp,
   stageOf, xpNeed, type BType, type TechId,
 } from "./rules";
-import { blockOf } from "./streets";
+import { blockOf, GATE_LINE, physRadius, streetAt } from "./streets";
+import { landmarkDef, LANDMARKS, plazaKey } from "./landmarks";
 import type { Building, Glob, IslandState } from "./state";
 
 export { dayKind } from "./rules";
@@ -55,7 +56,7 @@ export const cost = (type: BType, n: number, L: number): number => Math.round(B[
 let claimSig: string | null = null;
 let claimVal: { owner: Record<string, string>; size: Record<string, number> } = { owner: {}, size: {} };
 export function claims(st: IslandState): { owner: Record<string, string>; size: Record<string, number> } {
-  let sig = st.tier + ":";
+  let sig = st.tier + ":" + (st.landmarks ? JSON.stringify(st.landmarks) : "");
   for (const k in st.lots) {
     const b = st.lots[k];
     if (b) sig += k + b.type[0] + b.n + ";";
@@ -76,7 +77,7 @@ export function claims(st: IslandState): { owner: Record<string, string>; size: 
           if (!a && !c) continue;
           const q = i - a + "," + (j - c);
           // a footprint stays inside one city block: it never reaches across a street (core/streets.ts)
-          if (st.lots[q] !== null || owner[q] || blockOf(i - a) !== blockOf(i) || blockOf(j - c) !== blockOf(j)) {
+          if (st.lots[q] !== null || owner[q] || lmLot(st, q) || blockOf(i - a) !== blockOf(i) || blockOf(j - c) !== blockOf(j)) {
             ok = false;
             break;
           }
@@ -94,7 +95,76 @@ export function claims(st: IslandState): { owner: Record<string, string>; size: 
   return claimVal;
 }
 export const isFree = (st: IslandState, k: string | undefined): boolean =>
-  k !== undefined && st.lots[k] === null && !claims(st).owner[k];
+  k !== undefined && st.lots[k] === null && !claims(st).owner[k] && !lmLot(st, k);
+
+// ---------- landmarks (cosmetic) and moving a building ----------
+/** True when a placed landmark stands on this lot (a landmark takes the lot, nothing else about it). */
+export function lmLot(st: IslandState, k: string): boolean {
+  if (!st.landmarks) return false;
+  for (const id in st.landmarks) if (st.landmarks[id] === k) return true;
+  return false;
+}
+/** Landmarks this settlement has unlocked (Town: three, City: three more). */
+export const unlockedLandmarks = (st: IslandState) => LANDMARKS.filter((l) => l.tier <= st.tier);
+/** Plaza tiles (street crossings in the built area) a landmark may stand on; the avenue to the gate stays clear. */
+export function plazaSpots(st: IslandState): string[] {
+  const r = (TIERS[st.tier].grid - 1) / 2;
+  const R = physRadius(r);
+  const out: string[] = [];
+  for (let i = -R; i <= R; i++)
+    for (let j = -R; j <= R; j++) if (j !== GATE_LINE && streetAt(i, j, r) === "plaza") out.push(plazaKey(i, j));
+  return out;
+}
+/** Free spots for a landmark: free lots and unoccupied plaza tiles. */
+export function landmarkSpots(st: IslandState, id: string): string[] {
+  const taken = new Set(Object.entries(st.landmarks ?? {}).filter(([k]) => k !== id).map(([, v]) => v));
+  const lots = Object.keys(st.lots).filter((k) => isFree(st, k) || st.landmarks?.[id] === k).filter((k) => k !== "0,0" && !taken.has(k));
+  return [...lots, ...plazaSpots(st).filter((k) => !taken.has(k))];
+}
+export function canPlaceLandmark(st: IslandState, id: string, at: string): boolean {
+  const d = landmarkDef(id);
+  if (!d || d.tier > st.tier || st.phase !== "day") return false;
+  if (st.landmarks?.[id] === at) return false;
+  return landmarkSpots(st, id).includes(at);
+}
+/** Places a landmark, or moves it (free). One of each. */
+export function placeLandmark(st: IslandState, id: string, at: string): boolean {
+  if (!canPlaceLandmark(st, id, at)) return false;
+  (st.landmarks ??= {})[id] = at;
+  return true;
+}
+export function removeLandmark(st: IslandState, id: string): boolean {
+  if (!st.landmarks || !(id in st.landmarks)) return false;
+  delete st.landmarks[id];
+  if (!Object.keys(st.landmarks).length) delete st.landmarks;
+  return true;
+}
+
+/** Moving a built building costs a quarter of what its first level costs. */
+export const MOVE_FEE = 0.25;
+export const moveFee = (st: IslandState, key: string): number => {
+  const b = st.lots[key];
+  return b ? Math.max(1, Math.round(MOVE_FEE * cost(b.type, 0, st.L))) : 0;
+};
+/** Why a building can't be moved right now, or null when it can. */
+export function moveBlock(st: IslandState, from: string, to?: string): "night" | "none" | "same" | "taken" | "hours" | null {
+  if (st.phase !== "day") return "night";
+  if (!st.lots[from]) return "none";
+  if (st.hours < moveFee(st, from)) return "hours";
+  if (to === undefined) return null;
+  if (to === from) return "same";
+  if (!isFree(st, to)) return "taken";
+  return null;
+}
+/** Moves a building (level and everything else kept) to a free lot for a small fee in Hours. Takes effect at once. */
+export function moveBuilding(st: IslandState, from: string, to: string): boolean {
+  if (moveBlock(st, from, to) !== null) return false;
+  const fee = moveFee(st, from);
+  st.hours -= fee;
+  st.lots[to] = st.lots[from];
+  st.lots[from] = null;
+  return true;
+}
 
 // ---------- grey (lent) land ----------
 const GO_CACHE: Record<number, string[]> = {};

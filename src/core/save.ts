@@ -4,6 +4,7 @@
  */
 import { upgradeEvents } from "./eventlog";
 import type { GameData } from "./game";
+import { landmarkDef, parsePlaza } from "./landmarks";
 import type { IslandState } from "./state";
 
 export const SAVE_VERSION = 1;
@@ -33,6 +34,25 @@ export function validState(s: unknown): s is IslandState {
     num(o.tier) && o.tier >= 0 && o.tier <= 3 && num(o.pop) && num(o.day) && num(o.season) && num(o.hour) && num(o.dayLen) &&
     (o.phase === "day" || o.phase === "dusk" || o.phase === "night") && !!o.stats && typeof o.raidMem === "object"
   );
+}
+
+/** Placed landmarks that no longer make sense (unknown, locked, off the grid, doubled up) are dropped: they go back to unplaced. Old saves have none. */
+export function tidyLandmarks(st: IslandState): void {
+  if (!st.landmarks) return;
+  const seen = new Set<string>();
+  const out: Record<string, string> = {};
+  if (typeof st.landmarks === "object") {
+    for (const [id, at] of Object.entries(st.landmarks)) {
+      const d = landmarkDef(id);
+      const okSpot = typeof at === "string" && (at in st.lots || !!parsePlaza(at)) && !seen.has(at) && st.lots[at] == null;
+      if (d && d.tier <= st.tier && okSpot) {
+        out[id] = at;
+        seen.add(at);
+      }
+    }
+  }
+  if (Object.keys(out).length) st.landmarks = out;
+  else delete st.landmarks;
 }
 
 /** Migrations from older versions, keyed by the version they upgrade from. */
@@ -67,6 +87,8 @@ export function decodeSave(raw: string | null): SaveFile | null {
     }
     const f = o as unknown as SaveFile;
     if (!f.data || !validState(f.data.state) || !validState(f.data.checkpoint) || !Array.isArray(f.data.commands) || !Array.isArray(f.data.events)) return null;
+    tidyLandmarks(f.data.state);
+    tidyLandmarks(f.data.checkpoint);
     f.data.events = upgradeEvents(f.data.events);
     if (!f.meta || typeof f.meta !== "object") f.meta = { introDone: true, storyDone: true, colonyName: "New Patience", savedAt: 0 };
     else if (typeof (f.meta as SaveMeta).storyDone !== "boolean") (f.meta as SaveMeta).storyDone = (f.meta as SaveMeta).introDone;

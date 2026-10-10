@@ -12,6 +12,8 @@ import type { IslandState } from "./state";
 export type Command =
   | { t: "build"; key?: string; type: BType }
   | { t: "upgrade"; key: string }
+  | { t: "move"; from: string; to: string }
+  | { t: "landmark"; id: string; at: string }
   | { t: "borrow"; x: number }
   | { t: "repay"; x: number }
   | { t: "research"; id: TechId }
@@ -23,6 +25,8 @@ export type LoggedCommand = Command & { seq: number };
 
 export type GameEvent =
   | { kind: "built"; key: string; type: BType; credit: boolean; cost: number }
+  | { kind: "moved"; from: string; to: string; type: BType; fee: number }
+  | { kind: "landmark"; id: string; at: string; moved: boolean }
   | { kind: "upgraded"; key: string; type: BType; n: number; newLook: boolean }
   | { kind: "borrowed"; x: number; dayLen: number; shortTomorrow: number }
   | { kind: "repaid"; x: number; cleared: boolean }
@@ -65,6 +69,19 @@ export function apply(st: IslandState, cmd: Command): GameEvent[] {
       if (!E.upgrade(st, cmd.key)) throw new CommandError("can't upgrade");
       const b = E.bAt(st, cmd.key)!;
       out.push({ kind: "upgraded", key: cmd.key, type: E.typeAt(st, cmd.key)!, n: b.n, newLook: Math.min(6, Math.floor(b.n / 3)) !== Math.min(6, s0) });
+      break;
+    }
+    case "move": {
+      const type = st.lots[cmd.from]?.type;
+      const fee = E.moveFee(st, cmd.from);
+      if (!type || !E.moveBuilding(st, cmd.from, cmd.to)) throw new CommandError("can't move");
+      out.push({ kind: "moved", from: cmd.from, to: cmd.to, type, fee });
+      break;
+    }
+    case "landmark": {
+      const moved = !!st.landmarks?.[cmd.id];
+      if (!E.placeLandmark(st, cmd.id, cmd.at)) throw new CommandError("can't place");
+      out.push({ kind: "landmark", id: cmd.id, at: cmd.at, moved });
       break;
     }
     case "borrow": {

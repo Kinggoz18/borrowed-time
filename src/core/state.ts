@@ -63,4 +63,10 @@ export interface IslandState {
   raidMem: Record<number, { n: number; inc: number; tier: number }>;
   /** The latest Long Dusk result (replaces the prototype's log scan). */
   bossResult: { season: number; won: boolean } | null;
+  /**
+   * Cosmetic landmarks the player placed: landmark id → a lot key "i,j" or a plaza tile "p:I,J".
+   * Absent until the first one is placed (old saves and the sim never have it); no rule reads it
+   * except that a lot holding one is not free.
+   */
+  landmarks?: Record<string, string>;
 }
