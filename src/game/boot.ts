@@ -117,7 +117,10 @@ export async function bootGame(): Promise<void> {
     if (ui.screen !== "play" || !session) return;
     session.update(t.deltaMS);
     const st = session.state;
-    if (st.phase === "day") view.setLight(session.dayProgress(), false);
+    if (st.phase === "day") {
+      view.setLight(session.dayProgress(), false);
+      if (view.stats().horizonSails) view.setHorizonDrift(session.dayProgress());
+    }
     ui.updateHud();
   });
 

@@ -80,7 +80,15 @@ button { font: inherit; color: inherit; }
 .chip.debt.safe { background: var(--safe-bg); color: var(--safe); }
 .chip.debt.safe small { color: var(--safe); }
 @keyframes pulse { 50% { box-shadow: inset 0 0 0 3px rgba(164, 83, 47, 0.45); } }
-.daybox { display: grid; gap: 4px; flex: 1 1 110px; min-width: 96px; max-width: 220px; }
+.daybox { display: grid; gap: 4px; flex: 1 1 110px; min-width: 96px; max-width: 220px; position: relative; }
+.daybox.pennant::after { content: ""; position: absolute; top: -4px; right: 4px; width: 14px; height: 18px; border: 2px solid var(--ink); border-radius: 2px 2px 0 0; clip-path: polygon(0 100%, 50% 0, 100% 100%); }
+.daybox.pennant.calm::after { background: #7ba8c4; }
+.daybox.pennant.light::after { background: #8fbc8f; }
+.daybox.pennant.even::after { background: #d4a574; }
+.daybox.pennant.heavy::after { background: #c45c4a; }
+.noon-banner { position: absolute; left: 50%; transform: translateX(-50%); top: calc(var(--hud-h, 64px) + 10px); z-index: 6; pointer-events: none; width: min(400px, calc(100% - 24px)); min-height: 44px; padding: 10px 14px; box-sizing: border-box; background: var(--paper); border: 2.5px solid var(--ink); border-radius: 12px; box-shadow: 0 3px 0 var(--ink); font-size: 14px; line-height: 1.35; text-align: center; transition: opacity 0.45s; }
+.noon-banner .noon-kicker { display: block; font-size: 12px; font-weight: 600; color: var(--ink-dim); margin-bottom: 4px; }
+.noon-banner.out { opacity: 0; }
 .hud-row { display: flex; gap: 6px; align-items: center; }
 .hud-row.day { font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; }
 .hud-row.day .ico { width: 16px; height: 16px; }

@@ -5,7 +5,8 @@
  */
 import * as E from "../core/engine";
 import type { GameEvent } from "../core/game";
-import { duskRead, rangeBar } from "../core/hints";
+import { duskRead, noonCall, noonHour, rangeBar, type NoonCall } from "../core/hints";
+import { dayKey } from "../core/save";
 import { B, COUNT, EVENTS, LOT_TYPES, TIERS, xpNeed, type BType } from "../core/rules";
 import { cloneState } from "../core/snapshot";
 import type { IslandState } from "../core/state";
@@ -52,8 +53,9 @@ export class GameUI {
   private sheetOpen = false;
   private cardOpen = false;
   private coach: "palisade" | "field" | null = null;
-  private seen = new Set<string>();
   private selected: string | null = null;
+  private dayPennant: string | null = null;
+  private noonBanner: HTMLElement | null = null;
   private hudCache = "";
   private off: (() => void) | null = null;
   private inDusk = false;
@@ -136,7 +138,11 @@ export class GameUI {
     else if (!s.meta.introDone) void this.firstRun();
     else if (s.state.phase === "dusk") void this.dusk();
     else if (s.state.phase === "night") void this.sleep();
-    else this.seasonToast();
+    else {
+      this.syncHorizonFromSession();
+      this.tryNoonCall();
+      this.seasonToast();
+    }
   }
 
   private toggleRest(btn: HTMLElement): void {
@@ -202,7 +208,7 @@ export class GameUI {
       ),
       h(
         "div",
-        { class: "daybox", title: `Season ${st.season}` },
+        { class: "daybox" + (this.dayPennant ? ` pennant ${this.dayPennant}` : ""), title: `Season ${st.season}` },
         h(
           "div",
           { class: "hud-row day" },
@@ -295,6 +301,8 @@ export class GameUI {
         case "hourTick":
           this.floatIncome(ev.gain);
           this.animateHoursTo(st.hours);
+          this.tryNoonCall();
+          this.d.view.setHorizonDrift(s.dayProgress());
           break;
         case "dusk":
           resync = false;
@@ -316,9 +324,50 @@ export class GameUI {
   }
 
   private once(id: string, text: string): void {
-    if (this.seen.has(id)) return;
-    this.seen.add(id);
+    const s = this.session;
+    if (!s || s.meta.firsts.includes(id)) return;
+    s.meta.firsts.push(id);
+    void s.save();
     this.toast(text);
+  }
+
+  private tryNoonCall(): void {
+    const s = this.session;
+    if (!s || this.screen !== "play" || !s.shouldNoonCall()) return;
+    const call = noonCall(s.state);
+    s.recordNoonCall();
+    const rest = this.root.querySelector('[data-act="rest"]');
+    rest?.classList.remove("on");
+    rest?.setAttribute("aria-pressed", "false");
+    this.dayPennant = call.calm ? "calm" : call.band ?? "even";
+    this.hudCache = "";
+    if (call.sails && call.tint) this.d.view.setHorizonSails(call.sails, call.tint, s.state.hour / s.state.dayLen);
+    if (call.calm) this.toast(call.line);
+    else this.showNoonBanner(call);
+    this.updateHud();
+  }
+
+  private syncHorizonFromSession(): void {
+    const s = this.session;
+    if (!s || s.state.phase !== "day") return;
+    if (s.meta.calledDay !== dayKey(s.state.season, s.state.day)) return;
+    if (s.state.hour < noonHour(s.state.dayLen)) return;
+    const call = noonCall(s.state);
+    if (call.sails && call.tint) this.d.view.setHorizonSails(call.sails, call.tint, s.state.hour / s.state.dayLen);
+    this.dayPennant = call.calm ? "calm" : call.band ?? "even";
+  }
+
+  private showNoonBanner(call: NoonCall): void {
+    this.noonBanner?.remove();
+    const kicker = call.hidden ? HIDDEN_TITLE : call.band ? `${KIND_TITLE[call.kind]} · ${BAND_WORD[call.band]}` : KIND_TITLE[call.kind];
+    const el = h("div", { class: "noon-banner", role: "status" }, h("span", { class: "noon-kicker" }, kicker), h("b", {}, call.line));
+    this.root.appendChild(el);
+    this.noonBanner = el;
+    setTimeout(() => el.classList.add("out"), 5200);
+    setTimeout(() => {
+      el.remove();
+      if (this.noonBanner === el) this.noonBanner = null;
+    }, 5800);
   }
   toast(text: string, kind: "info" | "warn" | "good" = "info"): void {
     const t = h("div", { class: `toast ${kind}`, role: "status" }, text);
@@ -762,8 +811,9 @@ export class GameUI {
       const lines: Child[] = [];
       if (r.won) {
         lines.push(h("p", { class: "good" }, icon("check"), ` +${r.loot} Hours of salvage. A Late boat stays at the docks.`));
-        if (!this.seen.has("held")) {
-          this.seen.add("held");
+        if (!s.meta.firsts.includes("held")) {
+          s.meta.firsts.push("held");
+          void s.save();
           lines.push(h("p", { class: "quote" }, LINES.held));
         }
       } else {
@@ -828,6 +878,8 @@ export class GameUI {
     this.d.view.setLight(0, false);
     this.d.view.setLots(s.state);
     this.d.view.sync(s.state);
+    this.dayPennant = null;
+    this.hudCache = "";
     this.updateHud();
     this.setPaused(false);
     this.seasonToast();

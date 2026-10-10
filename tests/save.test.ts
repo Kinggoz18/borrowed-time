@@ -59,7 +59,7 @@ describe("save file", () => {
     (raw.meta as Record<string, unknown>).futureField = { x: 1 };
     const f = decodeSave(JSON.stringify(raw))!;
     expect(f.meta.colonyName).toBe("Margery's Rest");
-    expect((f.meta as Record<string, unknown>).futureField).toBeUndefined();
+    expect((f.meta as unknown as Record<string, unknown>).futureField).toBeUndefined();
   });
   it("seedFirsts marks raid and held after fights", () => {
     const g = newData(4);
