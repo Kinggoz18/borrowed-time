@@ -975,7 +975,7 @@ export class GameUI {
   openPause(): void {
     const body: Child[] = [
       h("button", { class: "btn big primary", "data-act": "resume", onclick: () => this.closeSheet() }, icon("play"), "Resume"),
-      h("button", { class: "btn big", "data-act": "profile", onclick: () => this.openProfile() }, icon("people"), "Profile"),
+      h("button", { class: "btn big", "data-act": "profile", onclick: () => this.openProfile() }, icon("profile"), "Profile"),
       h("button", { class: "btn big", "data-act": "journal", onclick: () => this.openJournal() }, icon("journal"), "Journal"),
       h("button", { class: "btn big", "data-act": "settings", onclick: () => { this.closeSheet(); this.showSettings("play"); } }, icon("gear"), "Settings"),
       h("button", { class: "btn big", "data-act": "home", onclick: () => { this.closeSheet(); this.d.onHome?.(); } }, icon("home"), "Home"),

@@ -83,7 +83,7 @@ export function profileView(c: Ctx, offered: readonly BType[], meta: { colonyNam
   );
   const root = h("div", { class: "sb" }, h("div", { class: "profile" }, colony, h("div", { class: "tabcol" }, island, ledger)));
   const show = (id: string): void => paneSwitch(root, "profile", id);
-  const strip = tabs("Profile", [{ id: "colony", label: "Colony", cls: "only-small", ic: "tent" }, { id: "island", label: "Island", ic: "home" }, { id: "ledger", label: "Ledger", ic: "journal" }], isWide() ? "island" : "colony", show);
+  const strip = tabs("Profile", [{ id: "colony", label: "Colony", cls: "only-small", ic: "profile" }, { id: "island", label: "Island", ic: "home" }, { id: "ledger", label: "Ledger", ic: "journal" }], isWide() ? "island" : "colony", show);
   show(isWide() ? "island" : "colony");
   void meta;
   return [strip, root];
@@ -99,7 +99,7 @@ export function charterView(c: Ctx, o: { onGo: (go: "build-dwellings" | "build-f
       "li",
       { class: "req" + (r.met ? " met" : ""), "data-req": r.id },
       h("span", { class: "state" }, icon(r.met ? "check" : "cross")),
-      h("b", {}, r.title),
+      h("b", {}, r.id === "people" ? icon("people") : null, r.title),
       h("span", { class: "val" }, r.value),
       r.pct !== undefined ? h("div", { class: "bar2", "aria-hidden": "true" }, h("i", { style: `width:${Math.round(r.pct * 100)}%` })) : null,
       r.hint ? h("span", { class: "hint" }, r.hint) : null,

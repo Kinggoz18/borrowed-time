@@ -406,3 +406,5 @@ h3.sec .ico{width:1.25rem;height:1.25rem}
 @media (orientation:portrait){
   .coach-tip,.place-bar{bottom:calc(var(--bar-top,0px) + 68px)}
 }
+.req b{display:flex;align-items:center;gap:6px}
+.req b .ico{width:1.125rem;height:1.125rem}
