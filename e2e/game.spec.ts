@@ -26,6 +26,8 @@ async function fresh(page: Page): Promise<void> {
 async function skipIntro(page: Page): Promise<void> {
   const skip = page.locator('[data-act="intro-skip"]');
   if (await skip.count()) await skip.click();
+  const keep = page.locator('.card-wrap [data-act="skip"]');
+  if (await keep.count()) await keep.click();
 }
 /** Landscape: the whole card or sheet fits the short screen, buttons included (no scrolling). */
 async function expectOnScreen(page: Page, sel: string): Promise<void> {
@@ -50,24 +52,38 @@ async function lotPoint(page: Page, key: string): Promise<{ x: number; y: number
 /** Skip to dusk, make the call, sit through the raid, sleep, and close the morning cards. */
 async function night(page: Page, decision: "hold" | "walls" | "borrow", snap?: string): Promise<void> {
   await dev(page, "dev-dusk");
-  const card = page.locator(".card.dusk");
-  await expect(card).toBeVisible({ timeout: 20_000 });
-  await expectOnScreen(page, ".card.dusk");
-  if (snap) await shot(page, snap);
-  const quiet = await page.locator('.card.dusk [data-act="sleep"]').count();
-  if (quiet) await act(page, "sleep").click();
-  else {
+  await page.waitForFunction(() => ["dusk", "night"].includes(window.__bt.state().phase), null, { timeout: 20_000 });
+  const raidCard = page.locator('.card.dusk [data-act="hold"], .card.dusk [data-act="walls"]');
+  if (await raidCard.count()) {
+    const card = page.locator(".card.dusk");
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expectOnScreen(page, ".card.dusk");
+    if (snap) await shot(page, snap);
     await act(page, decision).click();
     await expect(page.locator(".card.held, .card.lost").first()).toBeVisible({ timeout: 30_000 });
     if (snap) await shot(page, `${snap}-result`);
     await act(page, "sleep").click();
+    await page.waitForFunction(() => window.__bt.state().phase === "day", null, { timeout: 60_000 });
+  } else {
+    const skip = page.locator(".quiet-skip");
+    if (await skip.count()) await skip.click({ timeout: 3000 }).catch(() => page.waitForTimeout(2600));
+    else await page.waitForTimeout(2600);
+    for (let i = 0; i < 8; i++) {
+      await page.waitForTimeout(400);
+      const ok = page.locator('.card-wrap [data-act="ok"]');
+      if (!(await ok.count())) break;
+      await ok.first().click();
+    }
+    await page.waitForFunction(() => window.__bt.state().phase === "day", null, { timeout: 60_000 });
   }
-  // seizure, season end, tier-up and morning cards, in order, until play resumes
-  for (let i = 0; i < 6; i++) {
+  // seizure, season end, tier-up, morning and optional share cards until play resumes
+  for (let i = 0; i < 12; i++) {
     await page.waitForTimeout(400);
-    const btn = page.locator('.card-wrap [data-act="ok"]');
+    const wrap = page.locator(".card-wrap");
+    if (!(await wrap.count())) break;
+    const btn = wrap.locator('button:not([disabled])').first();
     if (!(await btn.count())) break;
-    await btn.first().click();
+    await btn.click();
   }
   await expect(page.locator(".card-wrap")).toHaveCount(0, { timeout: 20_000 });
 }
@@ -190,14 +206,7 @@ test("the arc: empty land to Village", async ({ page }) => {
   // sleep until the morning check passes (people stay only if fed and housed)
   for (let i = 0; i < 24 && (await st(page)).tier === 0; i++) {
     await dev(page, "dev-debt");
-    await dev(page, "dev-dusk");
-    await expect(page.locator(".card.dusk")).toBeVisible({ timeout: 20_000 });
-    if (await page.locator('.card.dusk [data-act="sleep"]').count()) await act(page, "sleep").click();
-    else {
-      await act(page, "hold").click();
-      await expect(page.locator(".card.held, .card.lost").first()).toBeVisible({ timeout: 30_000 });
-      await act(page, "sleep").click();
-    }
+    await night(page, "hold");
     // morning cards come one after another (the tier card last): wait until the screen is clear
     for (let k = 0; k < 12; k++) {
       await page.waitForTimeout(400);
@@ -209,7 +218,13 @@ test("the arc: empty land to Village", async ({ page }) => {
     if (await page.locator(".card.tier").count()) break;
     await dev(page, "dev-people");
   }
-  await expect(page.locator(".card.tier h2")).toHaveText("Village!", { timeout: 20_000 });
+  for (let t = 0; t < 40; t++) {
+    if (await page.locator('.card.tier h2').filter({ hasText: "Village" }).count()) break;
+    const skip = page.locator('.card-wrap [data-act="skip"]');
+    if (await skip.count()) await skip.first().click();
+    await page.waitForTimeout(500);
+  }
+  await expect(page.locator(".card.tier h2")).toHaveText("Village!", { timeout: 60_000 });
   await shot(page, "12-tier-up");
   await page.locator('.card.tier [data-act="ok"]').click();
   for (let i = 0; i < 3 && (await page.locator('.card-wrap [data-act="ok"]').count()); i++) await page.locator('.card-wrap [data-act="ok"]').first().click();
