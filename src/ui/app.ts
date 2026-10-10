@@ -6,7 +6,9 @@
 import * as E from "../core/engine";
 import type { GameEvent } from "../core/game";
 import { duskRead, noonCall, noonHour, rangeBar, type NoonCall } from "../core/hints";
-import { dayKey } from "../core/save";
+import { dayKey, trimColonyName } from "../core/save";
+import { defaultCrest } from "./crest";
+import { renderShareCard, shareCardCanvas } from "./share-card";
 import { B, COUNT, EVENTS, LOT_TYPES, TIERS, xpNeed, type BType } from "../core/rules";
 import { cloneState } from "../core/snapshot";
 import type { IslandState } from "../core/state";
@@ -21,6 +23,9 @@ import { CREDITS } from "./credits";
 import { applyOrientation } from "../platform/orientation";
 import { BAND_WORD, BLURB, HIDDEN_TITLE, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
 import { h, icon, type Child } from "./dom";
+import { activeGoals, markGoalsComplete, newlyCompletedGoals } from "../core/goals";
+import { journalEntries, journalPage } from "../core/journal";
+import { needColonyCopy, needs } from "../core/needs";
 import { nextEraLine, visibleGroups } from "./buildMenu";
 import { INTRO_CAMERA, runIntro } from "./intro";
 
@@ -42,6 +47,8 @@ type Screen = "home" | "play" | "settings";
 
 const fmt = (n: number): string => (Math.abs(n) >= 1000 ? (n / 1000).toFixed(1) + "k" : String(Math.floor(n)));
 const BUILD_ORDER: BType[] = ["palisade", "field", "cottage", "workshop", "tower", "bank", "road", "trade", "lantern"];
+/** Quiet evenings: toast then night without a modal (tap anywhere to skip). */
+export const QUIET_DUSK_MS = 2500;
 
 export class GameUI {
   readonly root: HTMLElement;
@@ -58,6 +65,15 @@ export class GameUI {
   private noonBanner: HTMLElement | null = null;
   private hudCache = "";
   private off: (() => void) | null = null;
+  private journalPage = 0;
+  private readonly onKey = (e: KeyboardEvent): void => {
+    if (e.key === "j" || e.key === "J") {
+      if (this.screen === "play" && !this.cardOpen) {
+        e.preventDefault();
+        void this.openJournal();
+      }
+    }
+  };
   private inDusk = false;
   private hoursChip: HTMLElement | null = null;
 
@@ -72,6 +88,7 @@ export class GameUI {
     d.view.onTapLot = (k) => this.tapLot(k);
     d.view.onTapTent = () => this.openClockkeeper();
     d.view.onTapLandmark = (id) => this.showPlaque(id);
+    document.addEventListener("keydown", this.onKey);
   }
 
   private cue(c: Cue, buzz?: "light" | "medium" | "heavy"): void {
@@ -131,6 +148,7 @@ export class GameUI {
     this.scoreScene();
     this.d.view.setLots(s.state);
     this.d.view.sync(s.state, { dusk: s.state.phase !== "day" });
+    this.checkGoals();
     this.updateHud();
     void this.bindNativePause();
     this.syncPlayInsets();
@@ -143,6 +161,17 @@ export class GameUI {
       this.tryNoonCall();
       this.seasonToast();
     }
+  }
+
+  private checkGoals(): void {
+    const s = this.session;
+    if (!s) return;
+    const fresh = newlyCompletedGoals(s.state, s.meta, s.data.events);
+    if (!fresh.length) return;
+    markGoalsComplete(s.meta, fresh);
+    for (const g of fresh) this.toast(`Ada: ${g.ada}`, "good");
+    void s.save();
+    this.hudCache = "";
   }
 
   private toggleRest(btn: HTMLElement): void {
@@ -177,7 +206,8 @@ export class GameUI {
     const lim = E.limit(st);
     const left = Math.max(0, st.dayLen - st.hour);
     const g = E.growthNeeds(st);
-    const sig = [Math.floor(st.hours), st.debt, lim, st.day, st.season, left, st.pop, st.L, st.tier, st.phase, g.seal, s.meta.colonyName].join("|");
+    const goals = activeGoals(st, s.meta, s.data.events);
+    const sig = [Math.floor(st.hours), st.debt, lim, st.day, st.season, left, st.pop, st.L, st.tier, st.phase, g.seal, s.meta.colonyName, goals.map((x) => x.id).join(",")].join("|");
     if (sig === this.hudCache) {
       this.hud.style.setProperty("--light", String(1 - s.dayProgress()));
       return;
@@ -187,14 +217,13 @@ export class GameUI {
     const near = owed && st.debt >= 0.8 * lim;
     const nx = TIERS[st.tier + 1];
     const ready = g.level && g.people && g.kept && g.seal;
-    this.hud.replaceChildren(
+    const hudKids: Child[] = [
       h(
         "button",
         { class: "colony-badge", "data-act": "profile", onclick: () => this.openProfile(), title: s.meta.colonyName },
         h("span", { class: "level-ring", "aria-hidden": "true", style: `--xp: ${Math.min(1, st.xp / Math.max(1, xpNeed(st.L)))}` }),
         h("span", { class: "colony-text" }, h("b", {}, s.meta.colonyName), h("small", {}, `${TIERS[st.tier].name} · Lv ${st.L}`)),
       ),
-      // one pill for both resources: Hours (what you have) and Owed (what you borrowed)
       h(
         "div",
         { class: "res" },
@@ -217,13 +246,24 @@ export class GameUI {
         ),
         h("span", { class: "lightbar", "aria-hidden": "true" }, h("i", {})),
       ),
+    ];
+    if (goals[0]) {
+      hudKids.push(
+        h(
+          "button",
+          { class: "chip goal", "data-hud": "goal", onclick: () => this.openGoals() },
+          icon("star"),
+          h("span", { class: "goal-pin" }, goals[0].title),
+        ),
+      );
+    }
+    hudKids.push(
       nx
         ? h(
             "button",
             { class: "chip charter" + (ready ? " ready" : ""), "data-hud": "charter", onclick: () => this.openCharter() },
             icon("star"),
             h("span", { class: "charter-name" }, nx.name),
-            // only the first thing still blocking the next tier; the sheet has the full list
             ...[
               !g.level && req(false, `Lv ${st.L}/${nx.lvl}`),
               !g.people && req(false, `${st.pop}/${nx.pop}`, "people"),
@@ -236,6 +276,7 @@ export class GameUI {
           )
         : h("div", { class: "chip charter", "data-hud": "charter" }, icon("star"), h("span", { class: "charter-name" }, TIERS[st.tier].name)),
     );
+    this.hud.replaceChildren(...hudKids.filter((k): k is HTMLElement => !!k));
     this.hoursChip = this.hud.querySelector(".chip.hours");
     this.hud.style.setProperty("--light", String(1 - s.dayProgress()));
   }
@@ -320,6 +361,7 @@ export class GameUI {
       this.d.view.setLots(st);
       this.d.view.sync(st, { dusk: st.phase !== "day" });
     }
+    this.checkGoals();
     this.updateHud();
   }
 
@@ -447,7 +489,43 @@ export class GameUI {
         },
       );
     });
+    await this.namingStep();
     if (!s.meta.introDone) void this.firstRun();
+  }
+
+  private async namingStep(): Promise<void> {
+    const s = this.session!;
+    if (s.meta.log.lastScreen === "naming-done") return;
+    this.setPaused(true);
+    const input = h("input", { class: "inp", type: "text", value: s.meta.colonyName, maxlength: "48", "aria-label": "Colony name" }) as HTMLInputElement;
+    const pick = await this.card({
+      title: "What do we call this shore?",
+      body: [h("p", { class: "sub" }, "Ada will stitch it on the chronicle cover."), input],
+      buttons: [{ id: "skip", label: "Keep New Patience" }, { id: "ok", label: "Name the colony", kind: "primary" }],
+    });
+    if (pick === "ok") s.meta.colonyName = trimColonyName(input.value);
+    s.meta.crest = defaultCrest();
+    s.meta.log.lastScreen = "naming-done";
+    await s.save();
+    this.setPaused(false);
+    this.hudCache = "";
+    this.updateHud();
+  }
+
+  private async offerShareCard(line: string, season: number): Promise<void> {
+    const s = this.session!;
+    const key = `s${season}-${line.slice(0, 12)}`;
+    if (s.meta.chapters.shared.includes(key)) return;
+    const go = await this.card({
+      title: "Share a keepsake?",
+      body: [h("p", {}, "A small card with your crest and this season's line.")],
+      buttons: [{ id: "share", label: "Share card", kind: "primary" }, { id: "skip", label: "Not now" }],
+    });
+    if (go !== "share") return;
+    const canvas = renderShareCard({ colonyName: s.meta.colonyName, crest: s.meta.crest, season, line });
+    await shareCardCanvas(canvas, s.meta.colonyName);
+    s.meta.chapters.shared.push(key);
+    await s.save();
   }
 
   // ---------- first run ----------
@@ -782,7 +860,8 @@ export class GameUI {
       decision = pick as E.Decision;
       this.cue("horn", "heavy");
     } else {
-      await this.card({ cls: "dusk quiet", kicker: KIND_TITLE.quiet, title: hint.line, body: ["Nobody's coming tonight."], buttons: [{ id: "sleep", label: "Sleep", kind: "primary", icon: "moon" }] });
+      this.toast(hint.line, "info");
+      await this.quietDuskPause();
     }
     const preRaid = cloneState(s.state);
     const evs = s.do({ t: "dusk", decision }) ?? [];
@@ -854,6 +933,7 @@ export class GameUI {
     if (end && end.kind === "seasonEnd") {
       const nextEv = EVENTS.find((e) => e.id === s.state.event)!;
       await this.card({ cls: end.won ? "held" : "lost", kicker: `Season ${end.season} ends`, title: end.won ? "The Long Dusk was held." : "The Long Dusk got in.", body: [h("p", {}, `Next season: ${nextEv.name}. ${nextEv.text}`)], buttons: [{ id: "ok", label: "Next season", kind: "primary", icon: "sun" }] });
+      if (end.won) void this.offerShareCard("We held the Long Dusk.", end.season);
     }
     const up = evs.find((e) => e.kind === "tierUp");
     if (up && up.kind === "tierUp") {
@@ -864,6 +944,7 @@ export class GameUI {
       const t = TIERS[up.tier];
       const unlocks = LOT_TYPES.concat(["road"]).filter((b) => B[b].tier === up.tier).map((b) => B[b].name);
       await this.card({ cls: "tier", kicker: "A new age", title: `${t.name}!`, body: [h("p", { class: "quote" }, up.tier === 1 ? LINES.village : "The island grows."), h("p", {}, `More land, a bigger ring, levels up to ${t.cap}.`), unlocks.length ? h("p", {}, `New: ${unlocks.join(" · ")}`) : null], buttons: [{ id: "ok", label: "Onward", kind: "primary", icon: "star" }] });
+      void this.offerShareCard(`The colony became ${t.name}.`, s.state.season);
     }
     if (night && night.kind === "night") {
       const r = night.result;
@@ -897,13 +978,28 @@ export class GameUI {
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "pause";
   }
 
+  openGoals(): void {
+    const s = this.session!;
+    const list = activeGoals(s.state, s.meta, s.data.events);
+    const body: Child[] = [
+      h("p", { class: "sub" }, "Ada's list on the wall"),
+      list.length
+        ? h("ul", { class: "report goals" }, ...list.map((g) => h("li", {}, h("b", {}, g.title), h("span", { class: "sub" }, g.ada))))
+        : h("p", { class: "sub" }, "The list is clear for now."),
+    ];
+    const el = this.sheet("Charter goals", body, "goals");
+    el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "goals";
+  }
+
   openProfile(): void {
     const s = this.session!;
     const st = s.state;
     const stats = st.stats;
+    const n = needs(st);
     const body: Child[] = [
       h("p", { class: "sub" }, `${TIERS[st.tier].name} · Level ${st.L}`),
       h("ul", { class: "report" }, h("li", {}, icon("people"), `${st.pop} people · food ${Math.floor(E.food(st))} · homes ${E.popRoom(st)}`)),
+      ...needColonyCopy(n).map((line) => h("p", { class: "sub need" }, line)),
       h("ul", { class: "report" }, h("li", {}, icon("build"), `${E.blds(st).length} buildings on the island`)),
       h("p", { class: "sub" }, `Season ${st.season} · Day ${st.day}`),
       h("h3", {}, "Ledger"),
@@ -919,23 +1015,40 @@ export class GameUI {
 
   openJournal(): void {
     const s = this.session!;
-    const lines = s.data.events
-      .slice(-24)
-      .reverse()
-      .map((ev) => {
-        if (ev.kind === "raid" && ev.result && !ev.result.quiet) return ev.result.won ? `Night ${ev.day}: we held the wall.` : `Night ${ev.day}: they broke through.`;
-        if (ev.kind === "seized") return `Hesper took a ${ev.seizure.type} on day ${ev.day}.`;
-        if (ev.kind === "tierUp") return `The island became ${TIERS[ev.tier].name}.`;
-        if (ev.kind === "built") return `We raised a ${B[ev.type].name}.`;
-        return null;
-      })
-      .filter((x): x is string => !!x);
+    const all = journalEntries(s.data.events, s.meta);
+    const page = journalPage(all, this.journalPage);
+    const st = s.state;
     const body: Child[] = [
+      h("div", { class: "journal-cover" }, h("b", {}, s.meta.colonyName), h("small", {}, `Chapter: ${TIERS[st.tier].name}`), h("small", {}, "Ada's chronicle")),
+      page.hasEarlier
+        ? h("button", { class: "btn", "data-act": "journal-earlier", onclick: () => {
+            this.journalPage++;
+            this.openJournal();
+          } }, "Earlier pages")
+        : null,
+      page.entries.length
+        ? h("ul", { class: "report journal" }, ...page.entries.slice().reverse().map((row) => h("li", {}, row.text)))
+        : h("p", { class: "sub" }, "The ledger is still mostly blank."),
       h("button", { class: "btn", "data-act": "replay-intro", onclick: () => { this.closeSheet(); void this.runStory(); } }, "Replay the arrival story"),
-      lines.length ? h("ul", { class: "report journal" }, ...lines.map((t) => h("li", {}, t))) : h("p", { class: "sub" }, "The ledger is still mostly blank."),
     ];
     const el = this.sheet("Journal", body, "journal");
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "journal";
+  }
+
+  private quietDuskPause(): Promise<void> {
+    return new Promise((resolve) => {
+      const wrap = h("div", { class: "quiet-skip", role: "button", tabindex: "0", "aria-label": "Skip to night" });
+      const finish = () => {
+        wrap.remove();
+        resolve();
+      };
+      const t = window.setTimeout(finish, QUIET_DUSK_MS);
+      wrap.onclick = () => {
+        window.clearTimeout(t);
+        finish();
+      };
+      this.layer.appendChild(wrap);
+    });
   }
 
   /** The track follows the screen and the hour, never a tap: menus and daylight play the day track, dusk, raids and night the night track, Hesper's card keeps whichever is playing. */

@@ -4,6 +4,7 @@
  * command log always reproduces the island.
  */
 import { BASE_DAY } from "../core/rules";
+import { compactEvents } from "../core/event-log";
 import { CommandError, dispatch, newData, type Command, type GameData, type GameEvent } from "../core/game";
 import { noonHour } from "../core/hints";
 import { dayKey, decodeSave, encodeSave, defaultMeta, SAVE_KEY, type SaveMeta } from "../core/save";
@@ -89,6 +90,7 @@ export class Session {
 
   async save(): Promise<boolean> {
     this.meta.savedAt = this.now();
+    this.data.events = compactEvents(this.data.events);
     this.lastSaveOk = await this.kv.set(SAVE_KEY, encodeSave(this.data, this.meta));
     return this.lastSaveOk;
   }
