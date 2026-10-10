@@ -200,3 +200,17 @@ describe("one fixed island from the first day", () => {
     expect(cnt(3)).toBeGreaterThan(0);
   });
 });
+
+describe("draw order uses the drawn (physical) position", () => {
+  it("a building is sorted by where it stands, so a tree or landmark in front of it covers it and the reverse", () => {
+    const st = E.newGame({ seed: 4 });
+    st.tier = 3;
+    st.hours = 1000;
+    st.lots["9,9"] = { type: "cottage", n: 3, inv: 1 };
+    const lay = layoutIsland(st, { pixel: () => true });
+    const b = lay.things.find((t) => t.key === "9,9")!;
+    expect(b.z).toBe((phys(9) + phys(9)) * 100 + 10);
+    const clock = lay.things.find((t) => t.frame === "land/clock")!; // at the back, behind the cottage
+    expect(clock.z).toBeLessThan(b.z);
+  });
+});

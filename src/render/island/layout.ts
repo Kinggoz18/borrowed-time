@@ -201,7 +201,7 @@ export function layoutIsland(st: IslandState, opts: LayoutOpts = {}): IslandLayo
     // the City's tallest spires are capped so its skyline stays calm
     const cap = era === "city" && b.type === "tower" && n === 1 ? 0.86 : 1;
     const scale = (native ? 1 : b.type === "field" || opts.pixel?.(frame) ? n : n * BUILDING_SCALE) * cap;
-    things.push({ frame, x: cx, y: cy + ((n - 1) * TH) / 2, z: depth(i, j, 10), key, scale });
+    things.push({ frame, x: cx, y: cy + ((n - 1) * TH) / 2, z: depth(phys(i), phys(j), 10), key, scale });
   }
   const has = (f: string): boolean => !!opts.pixel?.(f);
   const tentCell = { i: PR + 2, j: -PR + 1 };

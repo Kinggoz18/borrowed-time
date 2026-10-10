@@ -25,6 +25,8 @@ export interface GameHooks {
   stats: () => ReturnType<IslandView["stats"]>;
   lotToScreen: (key: string) => { x: number; y: number };
   zoomToLots: () => void;
+  /** Centre on a landmark and return its on-screen tap point (tests and screenshots). */
+  showLandmark: (id: string) => { x: number; y: number } | null;
   showLot: (key: string) => void;
   /** Plays a dusk battle from an already-rolled result (tests and screenshots). */
   playRaid: (res: RaidResult) => Promise<void>;
@@ -129,6 +131,7 @@ export async function bootGame(): Promise<void> {
     stats: () => view.stats(),
     lotToScreen: (k) => view.lotToScreen(k),
     zoomToLots: () => view.zoomToLots(),
+    showLandmark: (id) => view.showLandmark(id),
     showLot: (k) => view.showLot(k),
     playRaid: (res) => view.playRaid(res),
     fps: () => Math.round(fps),

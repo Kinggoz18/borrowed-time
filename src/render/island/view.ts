@@ -633,6 +633,18 @@ export class IslandView {
     const p = lotFront(i, j);
     return { x: this.world.x + p.x * this.zoom, y: this.world.y + (p.y - TH / 2) * this.zoom };
   }
+  /** Centre the camera on a landmark (tests and screenshots); returns where to tap its body on screen. */
+  showLandmark(id: string): { x: number; y: number } | null {
+    const lm = this.layout?.landmarks.find((l) => l.id === id);
+    if (!lm) return null;
+    this.glide = null;
+    this.zoomGlide = null;
+    this.userCam = true;
+    this.cx = lm.x;
+    this.cy = lm.y - 30;
+    this.apply();
+    return { x: this.world.x + lm.x * this.zoom, y: this.world.y + (lm.y - 30) * this.zoom };
+  }
   zoomToLots(): void {
     this.userCam = true;
     this.zoomGlide = null;

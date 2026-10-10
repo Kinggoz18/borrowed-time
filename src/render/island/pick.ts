@@ -3,6 +3,7 @@
  * Pure (unit-tested); the view calls this from screen coordinates.
  */
 import * as E from "../../core/engine";
+import { phys } from "../../core/streets";
 import { kij } from "../../core/rules";
 import type { IslandState } from "../../core/state";
 import { cellAt, cellFront, depth, lotAt, lotFront, ringCells, TH, TW, type IslandLayout } from "./layout";
@@ -65,7 +66,7 @@ export function pickAt(wx: number, wy: number, st: IslandState, layout: IslandLa
     const dx = Math.abs(wx - f.x) / (TW / 2), dy = Math.abs(wy - (f.y - TH / 2)) / (TH / 2);
     if (lotKey in st.lots && dx + dy <= 1.05) {
       const id = owner[lotKey] ?? lotKey;
-      if (!cands.some((x) => x.id === id)) cands.push({ id, z: depth(lot.i, lot.j, 0), dist: Math.hypot(wx - f.x, wy - (f.y - TH / 2)) });
+      if (!cands.some((x) => x.id === id)) cands.push({ id, z: depth(phys(lot.i), phys(lot.j), 0), dist: Math.hypot(wx - f.x, wy - (f.y - TH / 2)) });
     }
   }
 
