@@ -7,7 +7,7 @@ import type { RaidResult } from "../core/engine";
 import { NEAR_LIMIT } from "../core/eventlog";
 import type { LoggedEvent } from "../core/game";
 import { B, TECH, TIERS, type BType } from "../core/rules";
-import { LANDMARKS } from "../render/island/landmarks";
+import { LANDMARKS } from "../core/landmarks";
 import { CHAPTERS } from "./copy";
 import { fill, HESPER_LINES, TAG_WORDS, TITLES, VOICE, type Vars } from "./journalCopy";
 import { capital, numWord } from "./words";
@@ -117,7 +117,7 @@ export function journalEntries(events: readonly LoggedEvent[], seed: number): JE
         if (seen.length) {
           const first = seen[0].name;
           const rest = seen.slice(1).map((l) => l.name);
-          entry(ev, { kind: "landmark", group: "growth", ...say("landmark", ev, { first }), tag: { icon: "seal", word: TAG_WORDS.found }, facts: [first, ...rest].join(" · ") });
+          entry(ev, { kind: "landmark", group: "growth", ...say("landmark", ev, { first }), tag: { icon: "seal", word: TAG_WORDS.found }, facts: ["You can place: " + [first, ...rest].join(" · ")].join("") });
         }
         break;
       }

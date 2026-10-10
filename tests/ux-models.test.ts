@@ -411,6 +411,7 @@ describe("laptop key caps", () => {
     expect(keyAction({ key: "j" })).toBe("journal");
     expect(keyAction({ key: " ", code: "Space" })).toBe("rest");
     expect(keyAction({ key: "p" })).toBe("pause");
+    expect(keyAction({ key: "m" })).toBe("move");
     expect(keyAction({ key: "Escape" })).toBe("close");
     expect(keyAction({ key: "x" })).toBeNull();
     expect(keyAction({ key: "b", ctrlKey: true })).toBeNull();

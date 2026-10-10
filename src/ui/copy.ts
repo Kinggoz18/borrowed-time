@@ -110,3 +110,30 @@ export const PLURAL: Partial<Record<BType, string>> = { field: "Fields", cottage
 
 /** Journal chapters, one per age (LORE.md). */
 export const CHAPTERS = ["Wreck & Frontier", "Hearth & Harvest", "Gears & Gilt", "Brass & Steam"] as const;
+
+/** Landmarks (cosmetic) and moving a building. Short and plain. */
+export const LM = {
+  title: "Landmarks",
+  rail: "Landmarks",
+  tagline: "Old things we keep. For looks only.",
+  note: "Free, one of each. They change nothing in play.",
+  place: "Place",
+  move: "Move",
+  placed: "Placed",
+  free: "Free",
+  pickLot: (name: string): string => `Tap a lit spot for ${name}.`,
+  pickedLot: (name: string): string => `${name} goes here.`,
+  confirmPlace: "Place here",
+  confirmMove: "Move here",
+  cancel: "Cancel",
+  doneLandmark: (name: string): string => `${name} is placed. Tap it to read it.`,
+  movedLandmark: (name: string): string => `${name} moved.`,
+  pickMove: (name: string): string => `Tap a lit lot to move the ${name}.`,
+  pickedMove: (name: string, fee: number): string => `Move the ${name} here for ${fee} ${fee === 1 ? "Hour" : "Hours"}.`,
+  doneMove: (name: string): string => `${name} moved.`,
+  greyMove: "Grey land: it works at half there.",
+  noSpot: "No free spot right now.",
+  moveBtn: (fee: number): string => `Move · ${fee} ${fee === 1 ? "Hour" : "Hours"}`,
+  moveNoHours: (fee: number): string => `Moving costs ${fee} Hours.`,
+  moveHint: "Same level, new lot.",
+} as const;

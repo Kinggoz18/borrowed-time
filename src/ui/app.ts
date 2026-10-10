@@ -7,6 +7,7 @@ import * as E from "../core/engine";
 import type { GameEvent } from "../core/game";
 import { duskRead, rangeBar } from "../core/hints";
 import { B, EVENTS, LOT_TYPES, TIERS, xpNeed, type BType } from "../core/rules";
+import { landmarkDef } from "../core/landmarks";
 import { cloneState } from "../core/snapshot";
 import { lookFor } from "../render/island/layout";
 import type { IslandView } from "../render/island/view";
@@ -17,7 +18,7 @@ import type { KV } from "../platform/storage";
 import type { Cue, Haptics, Sfx } from "../platform/sfx";
 import { CREDITS } from "./credits";
 import { applyOrientation } from "../platform/orientation";
-import { BAND_WORD, BLURB, HIDDEN_TITLE, HUD, KIND_TITLE, LINES, LOOK_NAMES } from "./copy";
+import { BAND_WORD, BLURB, HIDDEN_TITLE, HUD, KIND_TITLE, LINES, LM, LOOK_NAMES } from "./copy";
 import { h, icon, type Child } from "./dom";
 import { BUILD_ORDER } from "./buildMenu";
 import { actionBar, colonyBadge, goalButton, resPlaque, timePlaque } from "./hudView";
@@ -78,6 +79,7 @@ export class GameUI {
     d.view.onTapLot = (k) => this.tapLot(k);
     d.view.onTapTent = () => this.openClockkeeper();
     d.view.onTapLandmark = (id) => this.showPlaque(id);
+    d.view.onTapTarget = (spot) => this.pickSpot(spot);
   }
 
   private cue(c: Cue, buzz?: "light" | "medium" | "heavy"): void {
@@ -149,6 +151,7 @@ export class GameUI {
   /** Build, Hesper and Rest wait for dawn. A tap says so, once per night, instead of doing nothing. */
   private act(id: "build" | "keeper" | "rest", btn?: HTMLElement): void {
     const s = this.session!;
+    this.endPlacing();
     if (s.state.phase !== "day") {
       if (!this.nightToldAt || this.nightToldAt !== `${s.state.season}.${s.state.day}`) {
         this.nightToldAt = `${s.state.season}.${s.state.day}`;
@@ -185,6 +188,11 @@ export class GameUI {
     if (!a || this.cardOpen || this.root.querySelector(".intro, .settings")) return;
     const inSheet = !!(e.target as HTMLElement | null)?.closest?.(".sheet");
     if (a === "close") {
+      if (this.placing) {
+        e.preventDefault();
+        this.endPlacing();
+        return;
+      }
       if (this.sheetOpen) {
         e.preventDefault();
         this.closeSheet();
@@ -192,6 +200,14 @@ export class GameUI {
       return;
     }
     if (e.repeat) return;
+    // M moves the building whose sheet is open
+    if (a === "move") {
+      if (this.sheetOpen && this.layer.querySelector<HTMLElement>(".sheet")?.dataset.kind === "lot" && this.selected) {
+        e.preventDefault();
+        this.startMove(this.selected);
+      }
+      return;
+    }
     // Space rests only from the map; inside a sheet it keeps its normal job (pressing a focused button)
     if (a === "rest" && (this.sheetOpen || inSheet)) return;
     e.preventDefault();
@@ -213,6 +229,9 @@ export class GameUI {
     const bottomBar = !!bar && bar.left < this.appW() / 2;
     const right = bar && !bottomBar ? this.appW() - bar.left : 0;
     const bottom = bar && bottomBar ? window.innerHeight - bar.top : 0;
+    // toasts, coach tips and the spot picker keep clear of the action bar: above it along the bottom, away from the rail on the right
+    this.root.style.setProperty("--bar-top", bar && bottomBar ? `${window.innerHeight - bar.top}px` : "0px");
+    this.root.style.setProperty("--rail-w", bar && !bottomBar ? `${this.appW() - bar.left}px` : "0px");
     this.d.view.setPlayInsets(top, right, bottom);
   }
   private appW(): number {
@@ -244,6 +263,7 @@ export class GameUI {
     this.syncBar();
     this.syncInert();
     this.syncPlayInsets();
+    if (this.placing && st.phase !== "day") this.endPlacing();
   }
 
   /** At dusk and night the actions that need daylight look and say they are unavailable (Journal stays on). */
@@ -326,6 +346,7 @@ export class GameUI {
           break;
         case "dusk":
           resync = false;
+          this.endPlacing();
           void this.dusk();
           break;
         case "raid":
@@ -359,11 +380,92 @@ export class GameUI {
   showPlaque(id: string): void {
     const lm = this.d.view.playLayout?.landmarks.find((l) => l.id === id);
     if (!lm) return;
-    const t = h("div", { class: "toast plaque", role: "status", "data-plaque": id }, h("b", {}, lm.name), h("span", {}, lm.plaque));
+    const t = h("div", { class: "toast plaque", role: "status", "data-plaque": id }, h("b", {}, lm.name), h("span", {}, lm.plaque), this.session?.state.phase === "day" ? h("button", { class: "btn small", type: "button", "data-act": "move-landmark", onclick: () => (t.remove(), this.startPlaceLandmark(id)) }, icon("build"), LM.move) : null);
     this.toasts.appendChild(t);
     while (this.toasts.children.length > 2) this.toasts.firstElementChild!.remove();
     setTimeout(() => t.classList.add("out"), 7600);
     setTimeout(() => t.remove(), 8000);
+  }
+
+  // ---------- choosing a spot: placing a landmark, moving a building ----------
+  private placing: { kind: "landmark"; id: string; spots: string[]; pick: string | null } | { kind: "move"; from: string; spots: string[]; pick: string | null } | null = null;
+  private placeBar: HTMLElement | null = null;
+  private startPlaceLandmark(id: string, preset?: string): void {
+    const s = this.session;
+    if (!s || s.state.phase !== "day" || !landmarkDef(id)) return;
+    const cur = s.state.landmarks?.[id];
+    const spots = E.landmarkSpots(s.state, id).filter((k) => k !== cur);
+    if (!spots.length) return this.toast(LM.noSpot);
+    this.beginPlacing({ kind: "landmark", id, spots, pick: preset && spots.includes(preset) ? preset : null });
+  }
+  private startMove(from: string): void {
+    const s = this.session;
+    if (!s || E.moveBlock(s.state, from) !== null) return this.cue("deny");
+    const spots = Object.keys(s.state.lots).filter((k) => k !== from && E.isFree(s.state, k));
+    if (!spots.length) return this.toast(LM.noSpot);
+    this.beginPlacing({ kind: "move", from, spots, pick: null });
+  }
+  private beginPlacing(p: NonNullable<GameUI["placing"]>): void {
+    this.closeSheet();
+    this.setPaused(false);
+    this.placing = p;
+    this.d.view.zoomToLots();
+    this.paintPlacing();
+  }
+  private pickSpot(spot: string): void {
+    if (!this.placing || !this.placing.spots.includes(spot)) return;
+    this.cue("tap", "light");
+    this.placing.pick = spot;
+    this.paintPlacing();
+  }
+  private paintPlacing(): void {
+    const p = this.placing;
+    const s = this.session;
+    if (!p || !s) return;
+    const st = s.state;
+    this.d.view.setTargets(p.spots, p.pick);
+    const name = p.kind === "landmark" ? landmarkDef(p.id)!.name : B[st.lots[p.from]!.type].name;
+    const fee = p.kind === "move" ? E.moveFee(st, p.from) : 0;
+    const line = !p.pick ? (p.kind === "landmark" ? LM.pickLot(name) : LM.pickMove(name)) : p.kind === "landmark" ? LM.pickedLot(name) : LM.pickedMove(name, fee);
+    const grey = p.kind === "move" && p.pick && E.greySet(st).has(p.pick);
+    this.placeBar?.remove();
+    this.placeBar = h(
+      "div",
+      { class: "place-bar", role: "status", "data-place": p.kind },
+      h("p", {}, line, grey ? h("small", {}, LM.greyMove) : null),
+      h("div", { class: "place-actions" }, p.pick ? h("button", { class: "btn primary", type: "button", "data-act": "place-ok", onclick: () => this.confirmPlacing() }, p.kind === "landmark" ? LM.confirmPlace : LM.confirmMove) : null, h("button", { class: "btn", type: "button", "data-act": "place-cancel", onclick: () => this.endPlacing() }, LM.cancel)),
+    );
+    this.root.appendChild(this.placeBar);
+    this.syncPlayInsets();
+  }
+  private confirmPlacing(): void {
+    const p = this.placing;
+    const s = this.session;
+    if (!p?.pick || !s) return;
+    if (p.kind === "landmark") {
+      const moved = !!s.state.landmarks?.[p.id];
+      const name = landmarkDef(p.id)!.name;
+      if (!s.do({ t: "landmark", id: p.id, at: p.pick })) return this.cue("deny");
+      this.cue("build", "medium");
+      this.endPlacing();
+      this.toast(moved ? LM.movedLandmark(name) : LM.doneLandmark(name));
+    } else {
+      const name = B[s.state.lots[p.from]!.type].name;
+      if (!s.do({ t: "move", from: p.from, to: p.pick })) return this.cue("deny");
+      this.cue("build", "medium");
+      const to = p.pick;
+      this.endPlacing();
+      this.d.view.puff(to);
+      this.toast(LM.doneMove(name));
+    }
+  }
+  private endPlacing(): void {
+    if (!this.placing && !this.placeBar) return;
+    this.placing = null;
+    this.placeBar?.remove();
+    this.placeBar = null;
+    this.d.view.setTargets(null);
+    this.syncPlayInsets();
   }
   private seasonToast(): void {
     const st = this.session!.state;
@@ -517,6 +619,7 @@ export class GameUI {
         const frame = t === "palisade" ? "ring/0/segA" : t === "road" ? "ui/road" : buildingFrame(era, lookFor(era, t, 0).frameType, 0);
         return this.d.view.thumb(frame);
       },
+      landmarkThumb: (id) => this.d.view.thumb(`land/${id}`),
       hesper: () => this.openClockkeeper(),
       close: () => this.closeSheet(),
     };
@@ -530,7 +633,7 @@ export class GameUI {
     this.selected = key ?? null;
     this.d.view.highlight(key ?? null);
     const keep = this.layer.querySelector<HTMLElement>(".sheet[data-kind=build] .blist")?.scrollTop ?? 0;
-    const body = V.buildView(this.vctx(), { lot: key, coach: this.coach, cat: this.cat, onCat: (id) => (this.cat = id), onBuy: (t) => this.doBuild(t, key), onUpgradeGlob: (g) => this.openGlob(g), onHesper: () => this.openClockkeeper() });
+    const body = V.buildView(this.vctx(), { lot: key, coach: this.coach, cat: this.cat, onCat: (id) => (this.cat = id), onBuy: (t) => this.doBuild(t, key), onUpgradeGlob: (g) => this.openGlob(g), onHesper: () => this.openClockkeeper(), onLandmark: (id) => this.startPlaceLandmark(id, key) });
     const el = this.sheet(key ? "Build here" : "Build", body, "drawer", { raw: true });
     el.querySelector<HTMLElement>(".sheet")!.dataset.kind = "build";
     const list = el.querySelector<HTMLElement>(".blist");
@@ -589,6 +692,11 @@ export class GameUI {
         ? h("p", { class: "sub" }, `Level ${cap} is the most a ${TIERS[st.tier].name} can build.`)
         : h("button", { class: "btn big primary", disabled: !ok, "data-act": "upgrade", onclick: () => this.doUpgrade(key) }, icon("star"), `Upgrade · ${c} ${def.credit ? "on credit" : "Hours"}`),
     ];
+    const fee = E.moveFee(st, key);
+    body.push(
+      h("button", { class: "btn big", disabled: st.hours < fee, "data-act": "move", "aria-keyshortcuts": "M", onclick: () => this.startMove(key) }, icon("build"), LM.moveBtn(fee)),
+      h("p", { class: "sub" }, st.hours < fee ? LM.moveNoHours(fee) : LM.moveHint),
+    );
     if (b.type === "trade") {
       const cap2 = E.tradeCap(st) - st.caravan;
       body.push(

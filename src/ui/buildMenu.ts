@@ -101,3 +101,14 @@ export const safestLot = (st: IslandState): string | undefined => E.greyOrder(st
 
 /** A category has "something you can afford now" when any of its cards can be bought. */
 export const groupAffordable = (st: IslandState, g: BuildGroup, lot?: string): boolean => g.types.some((t) => cardFor(st, t, lot).buy);
+
+/** A landmark's card in the Build sheet: only the unlocked ones exist (locked ones are not offered at all). */
+export interface LandmarkCard {
+  id: string;
+  name: string;
+  /** already placed (the button then says Move) */
+  placed: boolean;
+}
+export function landmarkCards(st: IslandState): LandmarkCard[] {
+  return E.unlockedLandmarks(st).map((l) => ({ id: l.id, name: l.name, placed: !!st.landmarks?.[l.id] }));
+}

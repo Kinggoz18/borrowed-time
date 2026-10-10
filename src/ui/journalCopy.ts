@@ -123,11 +123,11 @@ export const VOICE: Record<string, readonly string[]> = {
     "We did not hold the last night, and the season ended all the same. The calendar does not wait for anyone.",
     "It ended badly. Ada turned the page and wrote the next date at the top, because someone had to.",
   ],
-  // the island showed something (landmarks arriving with an age; token: {first}, {rest})
+  // the age brought old things back to mind: landmarks the player may now place (token: {first})
   landmark: [
-    "{first} was simply there at dawn, as if it had always been. Ada wrote it down and drew a small circle round it.",
-    "Something old came up out of the ground overnight. Tobias looked at {first} for a long time, then went back to work.",
-    "{first} stands where nothing stood yesterday. Nobody built it, and nobody has asked who did.",
+    "Ada wrote down what the old hands remember: {first} and the rest. We may set each one wherever we like, and it will keep us company.",
+    "Tobias talked all evening about {first}. By morning we had agreed it was ours to put up, wherever it looks right.",
+    "{first} is not a building and does no work. We can still stand it somewhere, and Ada says that counts for something.",
   ],
 };
 
@@ -152,7 +152,7 @@ export const TITLES: Record<string, readonly string[]> = {
   builtCottage: ["The first roof", "Timber overhead", "Nell's corner"],
   seasonHeld: ["Season {n} closed", "A line under season {n}", "Season {n}, standing"],
   seasonLost: ["Season {n} closed", "A page turned, badly", "Season {n}, over"],
-  landmark: ["Something old, found", "Where nothing stood", "Not built by us"],
+  landmark: ["Something old, to place", "Worth keeping", "Not for work, for us"],
 };
 
 /** Hesper's stock lines: soft, short, always quoted. */

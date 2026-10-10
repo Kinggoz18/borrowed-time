@@ -109,10 +109,11 @@ button{font:inherit;color:inherit}
 .goal-rows{display:none}
 .goal-open{display:none}
 .goal-top{display:flex;align-items:center;gap:8px}
-.toasts{position:absolute;left:50%;transform:translateX(-50%);top:calc(var(--hud-h,68px) + 8px);width:min(16rem,40%);z-index:var(--z-toast);display:grid;gap:8px}
+.toasts{max-height:calc(100% - var(--hud-h,68px) - var(--bar-top,0px) - 24px);overflow:hidden;position:absolute;left:50%;transform:translateX(-50%);top:calc(var(--hud-h,68px) + 8px);width:min(16rem,40%);z-index:var(--z-toast);display:grid;gap:8px}
 .toast{background:var(--paper);border:2px solid var(--ink);border-radius:4px;padding:8px 12px;font-size:var(--t-sm);font-weight:600;box-shadow:0 3px 0 var(--ink)}
 .toast.warn{background:var(--debt-bg)} .toast.good{background:var(--gold-lt);font-weight:800}
-.coach-tip{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);width:min(28rem,70%);background:var(--ink);color:var(--paper);border:2px solid var(--ink);border-radius:4px;padding:10px 14px;font-weight:700;text-align:center;z-index:var(--z-coach)}
+.coach-tip,.place-bar{bottom:calc(var(--bar-top,0px) + 12px);width:min(28rem,calc(100% - 2 * var(--rail-w,0px) - 32px))}
+.coach-tip{position:absolute;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--paper);border:2px solid var(--ink);border-radius:4px;padding:10px 14px;font-weight:700;text-align:center;z-index:var(--z-coach)}
 
 /* action rail (phone landscape) -> dock (laptop) -> bottom bar (portrait) */
 .bar{position:absolute;right:calc(var(--safe-right) + 8px);top:calc(var(--hud-h,68px) + 8px);width:4.75rem;display:grid;gap:8px;z-index:var(--z-rail)}
@@ -393,3 +394,15 @@ h3.sec .ico{width:1.25rem;height:1.25rem}
 .debug{position:absolute;top:62%;left:max(8px,env(safe-area-inset-left));background:#ddd5f0;z-index:var(--z-debug)}
 /* Settings is a full screen over play: it covers the HUD, the rail and any sheet */
 .settings{z-index:var(--z-intro)}
+
+/* choosing a spot (landmark placed, building moved): a bar above the action bar, like the coach tip */
+.place-bar{position:absolute;left:50%;transform:translateX(-50%);z-index:var(--z-coach);pointer-events:auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px 12px;padding:8px 12px;background:var(--ink);color:var(--paper);border:2px solid var(--ink);border-radius:4px;font-weight:700;text-align:center}
+.place-bar p{margin:0;display:grid;gap:2px;font-size:var(--t-sm)}
+.place-bar small{font-size:var(--t-cap);font-weight:700;color:var(--gold-lt)}
+.place-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.place-bar .btn{min-height:44px;color:var(--ink)}
+.toast.plaque{display:grid;gap:6px;pointer-events:auto}
+.toast.plaque .btn{justify-self:start;min-height:44px}
+@media (orientation:portrait){
+  .coach-tip,.place-bar{bottom:calc(var(--bar-top,0px) + 68px)}
+}

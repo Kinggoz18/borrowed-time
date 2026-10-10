@@ -3,9 +3,9 @@ import * as E from "../core/engine";
 import { B, type BType } from "../core/rules";
 import type { IslandState } from "../core/state";
 import { type LoggedEvent } from "../core/game";
-import { BUILD_ORDER, cardFor, groupAffordable, teaserFor, visibleGroups, type BuildCard } from "./buildMenu";
+import { BUILD_ORDER, cardFor, groupAffordable, landmarkCards, teaserFor, visibleGroups, type BuildCard } from "./buildMenu";
 import { charter } from "./charterModel";
-import { BLURB, CHARTER, MARKS_EMPTY } from "./copy";
+import { BLURB, CHARTER, LM, MARKS_EMPTY } from "./copy";
 import { h, icon, ICON, type Child } from "./dom";
 import { J_EMPTY, J_ERROR, J_FILTERS, J_NONE } from "./journalCopy";
 import { chaptered, ariaFor, journalEntries, PAGE, type JEntry, type JFilter } from "./journalModel";
@@ -25,6 +25,8 @@ export interface Ctx {
   st: IslandState;
   /** a sprite thumbnail data URL for a building type, as the Build sheet shows it */
   thumb: (t: BType) => string;
+  /** a thumbnail for a landmark, or "" when its art is not loaded */
+  landmarkThumb?: (id: string) => string;
   hesper: () => void;
   close: () => void;
 }
@@ -142,6 +144,18 @@ export interface BuildOpts {
   onBuy: (t: BType) => void;
   onUpgradeGlob: (g: "pal" | "road") => void;
   onHesper: () => void;
+  /** Place (or move) a landmark: the sheet closes and the player picks a spot on the island */
+  onLandmark?: (id: string) => void;
+}
+function landmarkEl(c: Ctx, id: string, name: string, placed: boolean, o: BuildOpts): HTMLElement {
+  const img = c.landmarkThumb?.(id);
+  return h(
+    "article",
+    { class: "bcard landmark" + (placed ? " done" : ""), "data-landmark": id },
+    h("div", { class: "thumb" }, img ? h("img", { alt: "", src: img }) : icon("seal")),
+    h("div", { class: "tx" }, h("div", { class: "nm" }, h("b", {}, name), placed ? h("small", {}, LM.placed) : null), h("span", { class: "bl" }, LM.note)),
+    h("button", { class: "btn buy", type: "button", "data-act": `landmark-${id}`, "aria-label": `${placed ? LM.move : LM.place} ${name}, ${LM.free}`, onclick: () => o.onLandmark?.(id) }, h("span", { class: "c" }, placed ? LM.move : LM.place), h("small", {}, LM.free)),
+  );
 }
 function cardEl(c: Ctx, cd: BuildCard, o: BuildOpts): HTMLElement {
   const t = cd.type;
@@ -177,8 +191,8 @@ function cardEl(c: Ctx, cd: BuildCard, o: BuildOpts): HTMLElement {
 export function buildView(c: Ctx, o: BuildOpts): Child[] {
   const st = c.st;
   const groups = visibleGroups(st.tier, BUILD_ORDER);
-  const rail = st.tier >= 1 && groups.length > 1;
-  const cat = rail && (o.cat === "all" || groups.some((g) => g.id === o.cat)) ? o.cat : "all";
+  const rail = st.tier >= 1 && groups.length + (landmarkCards(st).length ? 1 : 0) > 1;
+  const cat = rail && (o.cat === "all" || groups.some((g) => g.id === o.cat) || (o.cat === "landmarks" && landmarkCards(st).length > 0)) ? o.cat : "all";
   const sect = groups.map((g) => {
     const items = g.types.map((t) => cardEl(c, cardFor(st, t, o.lot), o));
     const teaser = teaserFor(g.id, st.tier, BUILD_ORDER);
@@ -189,6 +203,16 @@ export function buildView(c: Ctx, o: BuildOpts): Child[] {
       h("div", { class: "group-items" }, ...items, teaser ? h("div", { class: "teaser", role: "note" }, icon("lock"), teaser) : null),
     );
   });
+  const lms = landmarkCards(st);
+  if (lms.length)
+    sect.push(
+      h(
+        "section",
+        { class: "group", "data-group": "landmarks", "data-pane": "cat:all,landmarks" },
+        h("h3", { class: "group-title" }, LM.title, h("small", {}, LM.tagline)),
+        h("div", { class: "group-items" }, ...lms.map((l) => landmarkEl(c, l.id, l.name, l.placed, o))),
+      ),
+    );
   const list = h("div", { class: "blist" }, h("div", { class: "blist-head" }, h("p", { class: "sub" }, o.lot ? "Pick what goes on this lot." : "New buildings go on the safest free lot."), o.lot && E.greySet(st).has(o.lot) ? tag("Grey land: Hesper's for now. Buildings here work at half.", "owed", "grey") : null), ...sect);
   const el = h("div", { class: "build" + (rail ? " has-rail" : "") });
   if (rail) {
@@ -199,8 +223,9 @@ export function buildView(c: Ctx, o: BuildOpts): Child[] {
     const ic: Record<string, Ic> = { defence: "shield", dwellings: "home", food: "sprout", trade: "trade", civic: "bell" };
     el.append(
       h("div", { class: "cat-rail", role: "tablist", "aria-label": "Kinds of building", "aria-orientation": "vertical" },
-        mk("all", "All", "build", groups.reduce((n, g) => n + count(g), 0), groups.some((g) => groupAffordable(st, g, o.lot))),
-        ...groups.map((g) => mk(g.id, g.rail, ic[g.id] ?? "build", count(g), groupAffordable(st, g, o.lot)))),
+        mk("all", "All", "build", groups.reduce((n, g) => n + count(g), 0) + landmarkCards(st).length, groups.some((g) => groupAffordable(st, g, o.lot))),
+        ...groups.map((g) => mk(g.id, g.rail, ic[g.id] ?? "build", count(g), groupAffordable(st, g, o.lot))),
+        ...(landmarkCards(st).length ? [mk("landmarks", LM.rail, "seal", landmarkCards(st).length, false)] : [])),
     );
     paneSwitch(list, "cat", cat);
   }

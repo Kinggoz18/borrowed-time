@@ -96,8 +96,8 @@ export function goalModel(st: IslandState) {
 export const colonySig = (st: IslandState, name: string): string => [name, st.tier, st.L, Math.round((st.xp / Math.max(1, xpNeed(st.L))) * 20)].join("|");
 
 
-export type KeyAction = "build" | "keeper" | "journal" | "pause" | "rest" | "close";
-/** The laptop's key caps: B Build, H Hesper, J Journal, Space Rest, P Pause, Esc closes the open sheet. Anything else: null. */
+export type KeyAction = "build" | "keeper" | "journal" | "pause" | "rest" | "close" | "move";
+/** The laptop's key caps: B Build, H Hesper, J Journal, Space Rest, P Pause, M Move (when a building's sheet is open), Esc closes the open sheet. Anything else: null. */
 export function keyAction(e: { key: string; code?: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): KeyAction | null {
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
   if (e.code === "Space" || e.key === " ") return "rest";
@@ -106,6 +106,7 @@ export function keyAction(e: { key: string; code?: string; ctrlKey?: boolean; me
     case "h": return "keeper";
     case "j": return "journal";
     case "p": return "pause";
+    case "m": return "move";
     case "escape": return "close";
     default: return null;
   }
